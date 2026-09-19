@@ -51,7 +51,10 @@ web:
   traefikNamespace: network
   basicAuth:
     enabled: true
-    secretName: arena-secrets   # key 'users' (htpasswd) projected from Vault secret/arena
+    # Traefik requires a Secret holding exactly one key (`users`, htpasswd lines),
+    # so it gets its own ExternalSecret from a dedicated Vault path.
+    secretName: arena-web-auth
+    vaultPath: secret/arena-web-auth
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 300m, memory: 384Mi }

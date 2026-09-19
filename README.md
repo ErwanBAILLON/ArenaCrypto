@@ -287,6 +287,13 @@ A read-only web dashboard is available as the optional `web` extra
 (`uv sync --extra web`, `arena web`) and, in the chart, under `web.*`; it is
 not required for any of the above and has no authentication of its own.
 
+### Dashboard authentication
+
+The dashboard is read-only but exposes your research. With `web.basicAuth.enabled`
+the chart expects a Secret holding a single `users` key (htpasswd lines, e.g.
+`openssl passwd -apr1`), projected from `web.basicAuth.vaultPath`; Traefik rejects
+multi-key secrets for BasicAuth.
+
 ## Known limitations
 
 - **Carry is idealised.** A carry position is modelled as delta-neutral long
