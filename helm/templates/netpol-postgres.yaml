@@ -1,0 +1,22 @@
+# Namespace is default-deny egress; this adds TCP 5432 to shared-postgres (ns database).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-shared-postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "arena.name" . }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.postgresNamespace }}
+      ports:
+        - protocol: TCP
+          port: 5432

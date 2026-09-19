@@ -11,7 +11,7 @@ MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 
 def connect(database_url: str) -> psycopg.Connection:
-    return psycopg.connect(database_url, row_factory=dict_row, autocommit=False)
+    return psycopg.connect(database_url, row_factory=dict_row, autocommit=False, options="-c timezone=UTC")
 
 
 def run_migrations(conn: psycopg.Connection) -> list[str]:

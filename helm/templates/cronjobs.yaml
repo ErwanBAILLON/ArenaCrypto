@@ -1,0 +1,37 @@
+{{- $jobs := list
+  (dict "name" "tick"       "args" (list "tick")       "schedule" .Values.schedules.tick       "resources" .Values.resources.tick  "deadline" 3300 "tz" false)
+  (dict "name" "news"       "args" (list "news")       "schedule" .Values.schedules.news       "resources" .Values.resources.light "deadline" 1500 "tz" false)
+  (dict "name" "digest"     "args" (list "digest")     "schedule" .Values.schedules.digest     "resources" .Values.resources.light "deadline" 1800 "tz" true)
+  (dict "name" "challenger" "args" (list "challenger") "schedule" .Values.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false)
+  (dict "name" "retrain"    "args" (list "retrain")    "schedule" .Values.schedules.retrain    "resources" .Values.resources.heavy "deadline" 21600 "tz" false)
+}}
+{{- range $j := $jobs }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: arena-{{ $j.name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "arena.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $j.name }}
+spec:
+  schedule: {{ $j.schedule | quote }}
+  {{- if $j.tz }}
+  timeZone: {{ $.Values.timeZone | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "arena.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $j.name }}
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ $j.deadline }}
+      template:
+        {{- include "arena.podTemplate" (dict "root" $ "component" $j.name "args" $j.args "resources" $j.resources) | nindent 8 }}
+{{- end }}

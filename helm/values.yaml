@@ -1,0 +1,43 @@
+image:
+  repository: git.ebaillon.fr/bots/arena
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# Namespace already exists (PSA restricted, default-deny, allow-dns,
+# allow-internet-https, ResourceQuota). The chart never creates it.
+namespace: crypto-research
+
+secrets:
+  vaultPath: secret/arena          # keys: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DATABASE_URL
+  targetName: arena-secrets
+  clusterSecretStore: vault-backend
+
+env:
+  DRY_RUN: "false"
+  MAX_ALERTS_PER_DAY: "20"
+
+schedules:
+  tick: "5 * * * *"
+  news: "*/30 * * * *"
+  digest: "0 8 * * *"              # interpreted in .Values.timeZone
+  challenger: "0 3 * * 0"
+  retrain: "0 4 1,15 * *"
+timeZone: Europe/Paris
+
+resources:
+  light:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+  tick:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  heavy:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: "2", memory: 2Gi }
+
+bootstrap:
+  enabled: false
+  since: "2024-01-01"
+
+networkPolicy:
+  postgresNamespace: database

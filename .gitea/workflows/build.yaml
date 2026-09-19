@@ -1,0 +1,71 @@
+name: Test, Build and Push Arena Image
+
+# Server is deploy-only -> tests and image build happen here on the runner.
+# Tags: <version> (from pyproject.toml), <version>-<sha7>, latest.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'helm/**'
+      - 'docs/**'
+      - '*.md'
+
+env:
+  REGISTRY: git.ebaillon.fr
+  IMAGE_NAME: bots/arena
+  DOCKER_HOST: tcp://localhost:2375
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          VERSION=$(grep -E '^version *= *"' pyproject.toml | head -1 | sed -E 's/^version *= *"([^"]+)".*/\1/')
+          test -n "$VERSION" || { echo "ERROR: version not found in pyproject.toml"; exit 1; }
+          SHA_SHORT=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "SHA_SHORT=${SHA_SHORT}" >> $GITHUB_ENV
+          echo "version=${VERSION} sha=${SHA_SHORT}"
+
+      - name: Test
+        run: |
+          pip install uv
+          uv sync --frozen --extra dev
+          uv run pytest -q
+
+      - name: Install Docker CLI
+        run: |
+          apt-get update && apt-get install -y curl gnupg
+          curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list
+          apt-get update && apt-get install -y docker-ce-cli
+          docker version
+
+      - name: Log in to Gitea Container Registry
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ env.REGISTRY }} -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+
+      - name: Build image
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          docker build \
+            -t ${IMAGE}:${{ env.VERSION }} \
+            -t ${IMAGE}:${{ env.VERSION }}-${{ env.SHA_SHORT }} \
+            -t ${IMAGE}:latest .
+
+      - name: Push image
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          docker push ${IMAGE}:${{ env.VERSION }}
+          docker push ${IMAGE}:${{ env.VERSION }}-${{ env.SHA_SHORT }}
+          docker push ${IMAGE}:latest
+
+      - name: Summary
+        run: |
+          echo "✅ ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}-${{ env.SHA_SHORT }}"
+          echo "Pin this tag in helm/values.yaml -> image.tag"
