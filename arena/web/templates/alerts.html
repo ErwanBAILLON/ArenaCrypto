@@ -1,18 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Arena · Alerts{% endblock %}
+{% block title %}Arène · Alertes{% endblock %}
 {% block content %}
-<h2>Last {{ alerts|length }} alerts</h2>
+<h2>Les {{ alerts|length }} dernières alertes</h2>
 <div class="card">
+<div class="tablewrap">
 <table>
-  <thead><tr><th>ts</th><th>kind</th><th>competitor</th><th>symbol</th><th>detail</th><th>sent</th></tr></thead>
+  <thead><tr><th>Quand</th><th>Type</th><th>Modèle</th><th>Détail</th><th>Envoi Telegram</th></tr></thead>
   <tbody>
   {% for a in alerts %}
-  <tr><td>{{ a.ts|iso }}</td><td><span class="pill">{{ a.kind }}</span></td>
-      <td>{% if a.competitor_id %}<a href="/competitors/{{ a.competitor_id }}">{{ a.competitor }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td>{{ a.symbol or '' }}</td><td>{{ a.detail }}</td>
-      <td class="muted">{{ a.sent_at|iso if a.sent_at else 'queued' }}</td></tr>
-  {% else %}<tr><td colspan="6" class="muted">none</td></tr>{% endfor %}
+  <tr><td class="time">{{ a.ts|date_heure }}</td><td><span class="pill">{{ a.kind_fr }}</span></td>
+      <td>{% if a.competitor_id %}<a href="/competitors/{{ a.competitor_id }}">{{ a.family|family_title }}</a> <span class="muted small">{{ a.competitor }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{{ a.sentence }}</td>
+      <td class="muted small">{{ 'envoyée ' + a.sent_at|date_heure if a.sent_at else 'en attente' }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">aucune</td></tr>{% endfor %}
   </tbody>
 </table>
+</div>
 </div>
 {% endblock %}

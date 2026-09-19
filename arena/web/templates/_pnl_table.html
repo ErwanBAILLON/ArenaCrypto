@@ -1,0 +1,15 @@
+{# Usage: {% include "_pnl_table.html" %} with pnl, bench, title in context #}
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Période</th><th class="n">{{ title or 'Ce modèle' }}</th><th class="n">Garder du BTC</th><th class="n">Ne rien faire</th></tr></thead>
+  <tbody>
+  {% for key, label in [('today', "Aujourd'hui"), ('7d', '7 derniers jours'), ('30d', '30 derniers jours'), ('all', 'Depuis le début')] %}
+  {% set w = pnl[key] %}{% set b = bench[key] if bench else none %}
+  <tr><td>{{ label }}</td>
+      <td class="n {{ w.eur|sign_css if w else '' }}">{% if w %}{{ w.eur|euros }} <span class="muted small">({{ w.frac|pct_fr }})</span>{% else %}<span class="muted">pas encore</span>{% endif %}</td>
+      <td class="n {{ b.eur|sign_css if b else '' }}">{% if b %}{{ b.eur|euros }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="n">+0 €</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>

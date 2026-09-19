@@ -1,20 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Arena · Trials{% endblock %}
+{% block title %}Arène · Tests{% endblock %}
 {% block content %}
-<h2>Last {{ trials|length }} trials</h2>
+<h2>Les {{ trials|length }} derniers tests</h2>
+<p class="muted small">Avant d'entrer dans l'arène, chaque réglage est testé sur l'historique. « Admis » = il bat la chance et tient dans le temps ; « refusé » = pas assez convaincant.</p>
 <div class="card">
+<div class="tablewrap">
 <table>
-  <thead><tr><th>started</th><th>family</th><th>kind</th><th>verdict</th><th class="n">sharpe</th><th class="n">dsr</th><th class="n">p</th><th class="n">mdd</th><th>fold sharpes</th><th>competitor</th></tr></thead>
+  <thead><tr><th>Date</th><th>Famille</th><th>Type de test</th><th>Verdict</th><th class="n">Sharpe</th><th class="n">Pas dû au hasard</th><th class="n">Pire creux</th><th>Sharpe par période</th><th>Modèle</th></tr></thead>
   <tbody>
   {% for t in trials %}
-  <tr><td>{{ t.started_at|iso }}</td><td>{{ t.family }}</td><td>{{ t.kind }}</td>
-      <td>{% if t.verdict %}<span class="pill {{ t.verdict }}">{{ t.verdict }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td class="n">{{ t.highlights.sharpe|num }}</td><td class="n">{{ t.highlights.dsr|num }}</td>
-      <td class="n">{{ t.highlights.bootstrap_p|num }}</td><td class="n">{{ t.highlights.max_drawdown|pct }}</td>
+  <tr><td class="time">{{ t.started_at|date_heure }}</td><td>{{ t.family|family_title }}</td><td>{{ t.kind|trial_kind_fr }}</td>
+      <td><span class="pill {{ t.verdict or '' }}">{{ t.verdict|verdict_fr }}</span></td>
+      <td class="n">{{ t.highlights.sharpe|num_fr }}</td>
+      <td class="n">{{ t.highlights.dsr|pct_plain if t.highlights.dsr is not none else 'n/a' }}</td>
+      <td class="n">{{ t.highlights.max_drawdown|pct_fr }}</td>
       <td><code>{{ t.highlights.fold_sharpes|num if t.highlights.fold_sharpes is not none else '' }}</code></td>
-      <td>{% if t.competitor_id %}<a href="/competitors/{{ t.competitor_id }}">#{{ t.competitor_id }}</a>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
-  {% else %}<tr><td colspan="10" class="muted">none</td></tr>{% endfor %}
+      <td>{% if t.competitor_id %}<a href="/competitors/{{ t.competitor_id }}">fiche</a>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="9" class="muted">aucun</td></tr>{% endfor %}
   </tbody>
 </table>
+</div>
+<p class="legend">Sharpe = rendement ajusté du risque. « Pas dû au hasard » = probabilité que le résultat ne vienne pas du nombre d'essais (il en faut 90 %). Pire creux = plus forte baisse depuis un sommet pendant le test.</p>
 </div>
 {% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Arène · Les familles{% endblock %}
+{% block content %}
+<h2>Les familles</h2>
+<p class="muted small">Chaque modèle appartient à une famille : une idée, des données, un rythme de décision. Les repères ne cherchent pas à gagner ; ils servent à mesurer les autres.</p>
+{% for f in families %}
+<div class="card">
+  <h3>{{ f.card.title }}</h3>
+  <p>{{ f.card.summary }}</p>
+  <div class="grid two">
+    <div>
+      <strong class="small">Sur quoi elle se base</strong>
+      <ul class="plain small">{% for i in f.card.inputs %}<li>{{ i }}</li>{% endfor %}</ul>
+      <p class="small"><strong>Quand elle décide :</strong> {{ f.card.cadence }}.</p>
+      {% if f.card.caveats %}<ul class="plain small muted">{% for c in f.card.caveats %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+    <div>
+      <strong class="small">Modèles dans l'arène</strong>
+      {% if f.competitors %}
+      <ul class="plain small">
+        {% for s in f.competitors %}<li><a href="/competitors/{{ s.id }}">{{ s.name }}</a> <span class="pill {{ status_css(s.role, s.status) }}">{{ status_fr(s.role, s.status) }}</span></li>{% endfor %}
+      </ul>
+      {% else %}<p class="muted small">aucun pour l'instant</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

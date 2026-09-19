@@ -1,74 +1,92 @@
 {% extends "base.html" %}
-{% block title %}Arena · {{ d.spec.name }}{% endblock %}
+{% block title %}Arène · {{ p.card.title }}{% endblock %}
 {% block content %}
-<h2>{{ d.spec.name }}
-  <span class="pill {{ d.spec.status }}">{{ d.spec.status }}</span>
-  {% if d.spec.role != 'competitor' %}<span class="pill {{ d.spec.role }}">{{ d.spec.role }}</span>{% endif %}
+<h2>{{ p.card.title }}
+  <span class="pill {{ status_css(p.spec.role, p.spec.status) }}">{{ status_fr(p.spec.role, p.spec.status) }}</span>
+  <span class="muted small">{{ p.spec.name }} · version {{ p.spec.version }}</span>
 </h2>
+<p>{{ p.status_sentence }}</p>
+{% if p.spec.status == 'challenger' and p.spec.role == 'competitor' %}
+<p class="small">Progression : <strong>{{ p.progress.days }}</strong> jour{{ 's' if p.progress.days != 1 }} dans l'arène sur {{ p.progress.min_days }},
+  <strong>{{ p.progress.decisions }}</strong> décision{{ 's' if p.progress.decisions != 1 }} sur {{ p.progress.min_decisions }} (l'un des deux suffit pour être jugé).</p>
+{% endif %}
+{% if p.parent_name %}<p class="muted small">Dérivé de <a href="/competitors/{{ p.spec.parent_id }}">{{ p.parent_name }}</a>.{% if p.spec.rationale %} {{ p.spec.rationale }}{% endif %}</p>
+{% elif p.spec.rationale %}<p class="muted small">{{ p.spec.rationale }}</p>{% endif %}
+
 <div class="grid two">
-<section class="card">
-  <table><tbody>
-    <tr><th>family</th><td>{{ d.spec.family }} v{{ d.spec.version }}</td></tr>
-    <tr><th>parent</th><td>{% if d.spec.parent_id %}<a href="/competitors/{{ d.spec.parent_id }}">{{ d.parent_name or d.spec.parent_id }}</a>{% else %}<span class="muted">none</span>{% endif %}</td></tr>
-    <tr><th>first book</th><td>{{ d.first_ts|iso or '—' }}</td></tr>
-    <tr><th>rationale</th><td>{{ d.spec.rationale or '—' }}</td></tr>
-  </tbody></table>
-</section>
-<section class="card">
-  <h2>params</h2>
-  <pre>{{ d.spec.params|pretty }}</pre>
-</section>
-</div>
-
-<h2>NAV since first book row</h2>
-<div class="card">{{ chart|safe }}</div>
-
-<h2>Current targets {% if d.current_ts %}<span class="muted">@ {{ d.current_ts|iso }}</span>{% endif %}</h2>
 <div class="card">
-<table>
-  <thead><tr><th>symbol</th><th class="n">weight</th><th>kind</th><th class="n">conviction</th><th>reason</th></tr></thead>
-  <tbody>
-  {% for t in d.current_targets %}
-  <tr><td>{{ t.symbol }}</td>
-      <td class="n {{ 'pos' if t.weight > 0 else 'neg' }}">{{ t.weight|num }}</td>
-      <td>{{ t.kind }}</td><td class="n">{{ t.conviction|num }}</td>
-      <td><code>{{ t.reason|kv }}</code></td></tr>
-  {% else %}<tr><td colspan="5" class="muted">flat</td></tr>{% endfor %}
-  </tbody>
-</table>
+  <h3>Ce qu'il fait</h3>
+  <p>{{ p.card.summary }}</p>
+  <h3>Quand il décide</h3>
+  <p>{{ p.card.cadence }}.</p>
 </div>
-
-<h2>Last 50 target rows</h2>
 <div class="card">
-<table>
-  <thead><tr><th>ts</th><th>symbol</th><th class="n">weight</th><th>kind</th><th class="n">conv</th></tr></thead>
-  <tbody>
-  {% for t in d.recent_targets %}
-  <tr><td>{{ t.ts|iso }}</td><td>{{ t.symbol }}</td>
-      <td class="n {{ 'pos' if t.weight > 0 else 'neg' }}">{{ t.weight|num }}</td><td>{{ t.kind }}</td><td class="n">{{ t.conviction|num }}</td></tr>
-  {% else %}<tr><td colspan="5" class="muted">none</td></tr>{% endfor %}
-  </tbody>
-</table>
+  <h3>Sur quoi il se base</h3>
+  <ul class="plain">{% for i in p.card.inputs %}<li>{{ i }}</li>{% endfor %}</ul>
+  {% if p.params_words %}<p class="muted small">Réglages : {{ p.params_words|join(' ; ') }}.</p>{% endif %}
+  {% if p.card.caveats %}<h3>À garder en tête</h3><ul class="plain small">{% for c in p.card.caveats %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+  <details><summary>Paramètres bruts</summary><pre>{{ p.spec.params|pretty }}</pre></details>
+</div>
 </div>
 
-{% if d.model_metrics is not none %}
-<h2>Latest model metrics</h2>
-<div class="card"><pre>{{ d.model_metrics|pretty }}</pre></div>
+{% if p.spec.role == 'competitor' %}
+<h2>Pourquoi il est {{ 'champion' if p.spec.status == 'champion' else 'prétendant' if p.spec.status == 'challenger' else status_fr(p.spec.role, p.spec.status) }}</h2>
+<div class="card">
+{% if p.gate %}
+  <p class="muted small">D'après le {{ p.gate.kind|trial_kind_fr }} du {{ p.gate.started_at|date_fr }} : verdict <span class="pill {{ p.gate.verdict or '' }}">{{ p.gate.verdict|verdict_fr }}</span>.</p>
+  <ul class="plain">{% for l in p.gate_lines %}<li>{{ l }}</li>{% else %}<li class="muted">Pas encore de chiffres.</li>{% endfor %}</ul>
+  {% if p.robustness %}
+  <h3>Tenue par type de marché</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Marché</th><th class="n">Périodes gagnantes</th></tr></thead>
+    <tbody>
+    {% for k in ['bull', 'bear', 'range'] %}{% set v = (p.robustness.win_rate_by_regime or {}).get(k) %}
+    <tr><td>{{ REGIME_FR[k] }}</td><td class="n">{{ v|pct_plain if v is not none else '—' }}</td></tr>
+    {% endfor %}
+    <tr><td><strong>Toutes périodes</strong></td><td class="n"><strong>{{ p.robustness.win_rate_overall|pct_plain }}</strong></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="legend">{{ p.robustness.n_windows }} périodes testées ; Sharpe médian {{ p.robustness.median_sharpe|num_fr }}.</p>
+  {% endif %}
+{% else %}
+  <p class="muted">Aucun test enregistré pour ce modèle.</p>
+{% endif %}
+</div>
 {% endif %}
 
-<h2>Trials of family {{ d.spec.family }}</h2>
+<h2>Ce qu'il tient maintenant {% if p.positions %}<span class="muted small">décision du {{ p.positions[0].ts|date_heure }} UTC</span>{% endif %}</h2>
 <div class="card">
-<table>
-  <thead><tr><th>started</th><th>kind</th><th>verdict</th><th class="n">sharpe</th><th class="n">dsr</th><th class="n">p</th><th class="n">mdd</th><th>notes</th></tr></thead>
-  <tbody>
-  {% for t in d.trials %}
-  <tr><td>{{ t.started_at|iso }}</td><td>{{ t.kind }}</td>
-      <td>{% if t.verdict %}<span class="pill {{ t.verdict }}">{{ t.verdict }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td class="n">{{ t.highlights.sharpe|num }}</td><td class="n">{{ t.highlights.dsr|num }}</td>
-      <td class="n">{{ t.highlights.bootstrap_p|num }}</td><td class="n">{{ t.highlights.max_drawdown|pct }}</td>
-      <td class="muted">{{ t.notes }}</td></tr>
-  {% else %}<tr><td colspan="8" class="muted">none</td></tr>{% endfor %}
-  </tbody>
-</table>
+{% if p.positions %}
+<ul class="plain">
+  {% for t in p.positions %}
+  <li>{{ t.sentence }} <span class="muted small">Depuis {{ t.since|date_heure }} UTC ({{ t.held_for|duree }}){% if t.value_eur is not none %}, valeur ≈ {{ t.value_eur|round|int }} €{% endif %}.</span></li>
+  {% endfor %}
+</ul>
+{% else %}<p class="muted">Aucune position : en cash.</p>{% endif %}
 </div>
+
+<h2>Résultats</h2>
+<div class="card">
+  {% with pnl=p.pnl, bench=p.bench, title=p.card.title %}{% include "_pnl_table.html" %}{% endwith %}
+  <p class="legend">Valeur actuelle du livre : <strong>{{ p.pnl.nav|round|int if p.pnl.nav else '—' }} €</strong>{% if p.first_ts %}, parti de 10 000 € le {{ p.first_ts|date_fr }}{% endif %}. « Ne rien faire » vaut toujours 0 €.</p>
+</div>
+
+<h2>{{ p.card.title }} : 10 000 € virtuels depuis le début</h2>
+<div class="card">{{ chart|safe }}</div>
+
+<h2>Ses dernières actions</h2>
+<div class="card">
+<ul class="feed">
+  {% for a in p.actions %}
+  <li><span class="time">{{ a.ts|date_heure }}</span><span class="pill {{ a.change }}">{{ a.change }}</span> {{ a.sentence }}</li>
+  {% else %}<li class="muted">aucune action enregistrée</li>{% endfor %}
+</ul>
+</div>
+
+{% if p.model_metrics is not none %}
+<h2>Dernier modèle appris</h2>
+<div class="card"><pre>{{ p.model_metrics|pretty }}</pre></div>
+{% endif %}
 {% endblock %}
