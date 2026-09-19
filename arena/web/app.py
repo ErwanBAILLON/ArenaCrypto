@@ -73,6 +73,7 @@ def _templates() -> Jinja2Templates:
             "pretty": _pretty,
             "kv": _kv,
             "heure": fr.heure,
+            "universe_fr": fr.universe_fr,
             "date_heure": fr.date_heure,
             "date_fr": fr.date_fr,
             "euros": fr.euros,

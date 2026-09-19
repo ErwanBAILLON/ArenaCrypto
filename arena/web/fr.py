@@ -180,3 +180,10 @@ def duration_fr(delta: timedelta) -> str:
     if secs >= 3600:
         return f"{secs // 3600} h"
     return f"{max(1, secs // 60)} min"
+
+
+UNIVERSE_FR = {"crypto": "Crypto", "classic": "Marchés classiques"}
+
+
+def universe_fr(name: str | None) -> str:
+    return UNIVERSE_FR.get(str(name), str(name or "Crypto"))

@@ -18,7 +18,7 @@
 <h2>Qui parle en ce moment</h2>
 {% for c in live.champions %}
 <div class="card">
-  <h3><a href="/competitors/{{ c.spec.id }}">{{ c.card.title }}</a> <span class="pill champion">champion</span> <span class="muted small">{{ c.spec.name }}</span></h3>
+  <h3><a href="/competitors/{{ c.spec.id }}">{{ c.card.title }}</a> <span class="pill champion">champion</span> <span class="pill">{{ c.spec.universe|universe_fr }}</span> <span class="muted small">{{ c.spec.name }}</span></h3>
   <p class="small muted">{{ c.card.summary }}</p>
   {% if c.positions %}
   <ul class="plain">
@@ -102,10 +102,11 @@
 <div class="card">
 <div class="tablewrap">
 <table>
-  <thead><tr><th>Modèle</th><th>Statut</th><th class="n">Sharpe</th><th class="n">Résultat</th><th class="n">Pire creux</th><th class="n">Valeur du livre</th><th class="n">Heures mesurées</th></tr></thead>
+  <thead><tr><th>Arène</th><th>Modèle</th><th>Statut</th><th class="n">Sharpe</th><th class="n">Résultat</th><th class="n">Pire creux</th><th class="n">Valeur du livre</th><th class="n">Heures mesurées</th></tr></thead>
   <tbody>
   {% for r in board.rows %}
   <tr>
+    <td><span class="pill">{{ r.universe|universe_fr }}</span></td>
     <td><a href="/competitors/{{ r.id }}">{{ r.family|family_title }}</a> <span class="muted small">{{ r.name }}</span></td>
     <td><span class="pill {{ status_css(r.role, r.status) }}">{{ status_fr(r.role, r.status) }}</span></td>
     <td class="n">{{ r.sharpe_30d|num_fr }}</td>
@@ -115,7 +116,7 @@
     <td class="n muted">{{ r.bars_30d }}</td>
   </tr>
   {% else %}
-  <tr><td colspan="7" class="muted">aucun champion ni prétendant pour l'instant</td></tr>
+  <tr><td colspan="8" class="muted">aucun champion ni prétendant pour l'instant</td></tr>
   {% endfor %}
   </tbody>
 </table>

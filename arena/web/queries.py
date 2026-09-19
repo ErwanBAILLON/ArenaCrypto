@@ -93,6 +93,7 @@ def leaderboard(conn: psycopg.Connection, now: datetime) -> Leaderboard:
                 "version": s.version,
                 "status": s.status,
                 "role": s.role,
+                "universe": s.universe,
                 "sharpe_30d": sharpe(r) if len(r) > MIN_BARS_FOR_SHARPE else 0.0,
                 "ret_30d": total_return(r) if len(r) else 0.0,
                 "mdd_30d": max_drawdown(r) if len(r) else 0.0,
@@ -100,7 +101,7 @@ def leaderboard(conn: psycopg.Connection, now: datetime) -> Leaderboard:
                 "bars_30d": int(len(r)),
             }
         )
-    rows.sort(key=lambda x: (x["role"] != "competitor", -x["sharpe_30d"]))
+    rows.sort(key=lambda x: (x["universe"] != "crypto", x["role"] != "competitor", -x["sharpe_30d"]))
     names = {s.id: s.name for s in specs}
     alloc = [
         (names.get(cid, str(cid)), w) for cid, w in sorted(bstore.last_allocations(conn).items(), key=lambda kv: -kv[1])
@@ -534,6 +535,7 @@ def champions_live(conn: psycopg.Connection, now: datetime) -> list[dict[str, An
             {
                 "spec": s,
                 "card": families.card(s.family),
+                "universe": s.universe,
                 "pnl": pnl,
                 "positions": positions_now(conn, s.id, s.family, now, pnl["nav"]),
             }
