@@ -1,0 +1,24 @@
+# Assets: USDT perpetuals on Binance Futures that also trade on Hyperliquid.
+symbols:
+  - BTC
+  - ETH
+  - SOL
+  - BNB
+  - XRP
+  - DOGE
+  - ADA
+  - AVAX
+  - LINK
+  - DOT
+  - LTC
+  - NEAR
+  - SUI
+  - ARB
+  - OP
+binance_suffix: USDT
+fees:
+  perp_taker: 0.0005   # Hyperliquid taker
+  slippage: 0.0002
+  spot_taker: 0.0010
+nav0: 10000.0
+history_start: "2024-01-01T00:00:00Z"
