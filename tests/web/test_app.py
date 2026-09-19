@@ -13,8 +13,6 @@ from arena.settings import Settings
 from arena.store import books as bstore
 from arena.store import registry
 
-pytest.importorskip("fastapi")
-
 NOW = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
 
 

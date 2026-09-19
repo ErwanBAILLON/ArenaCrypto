@@ -46,5 +46,6 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "W"]
 
 [tool.ruff.lint.per-file-ignores]
+"tests/web/**" = ["E402"]  # importorskip must run before the web imports
 "tests/**" = ["B011", "E501"]
 "arena/web/**" = ["B008"]  # FastAPI Depends() in defaults is the framework idiom
