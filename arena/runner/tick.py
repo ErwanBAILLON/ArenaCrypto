@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pandas as pd
@@ -46,6 +46,8 @@ class TickReport:
     skipped: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     alerts: int = 0
+    changes: int = 0
+    started_at: datetime | None = None
 
 
 def decision_bar(now: datetime) -> pd.Timestamp:
@@ -115,7 +117,7 @@ def run(
     client: httpx.Client | None = None,
     ingest: bool = True,
 ) -> TickReport:
-    rep = TickReport()
+    rep = TickReport(started_at=datetime.now(UTC))
     if ingest and client is not None:
         rep.ingested = ingest_market(conn, client, universe, now)
     ts = decision_bar(now)
@@ -161,7 +163,32 @@ def run(
     _allocate(conn, specs, ts)
     _drift_and_promote(conn, specs, ts, now)
     conn.commit()
+    record_tick(conn, rep)
     return rep
+
+
+def record_tick(conn: psycopg.Connection, rep: TickReport) -> None:
+    """Persist the tick summary (activity feed for the dashboard)."""
+    from psycopg.types.json import Jsonb
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO tick_runs (bar_ts, started_at, finished_at, booked, skipped, failed, changes, alerts,"
+            " ingested, ok) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                rep.ts,
+                rep.started_at,
+                datetime.now(UTC),
+                len(rep.booked),
+                len(rep.skipped),
+                rep.failed,
+                rep.changes,
+                rep.alerts,
+                Jsonb(rep.ingested),
+                not rep.failed,
+            ),
+        )
+    conn.commit()
 
 
 def _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, nav0, rep: TickReport) -> None:
@@ -191,6 +218,9 @@ def _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fee
     row = book.step(ts, prices, prev_prices, funding, decision)
     bstore.write_targets(conn, spec.id, ts, decision)
     bstore.write_book_row(conn, spec.id, row)
+    new_positions = {sym: (t.kind, round(t.weight, 6)) for sym, t in decision.items() if t.weight != 0.0}
+    if new_positions != {sym: (k, round(w, 6)) for sym, (k, w) in prev_positions.items() if w != 0.0}:
+        rep.changes += 1
     save_state(conn, spec.id, ts, comp.state())
     for a in _signal_alerts(conn, spec, prev_positions, decision, ts, regime, fund_8h):
         bstore.add_alert(conn, a)
