@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 
 from arena.core.types import CompetitorSpec
 
-_SPEC_COLS = "id, name, family, version, params, role, status, parent_id, rationale"
+_SPEC_COLS = "id, name, family, version, params, role, status, parent_id, rationale, universe"
 
 
 def _spec(row: dict[str, Any]) -> CompetitorSpec:
@@ -24,6 +24,7 @@ def _spec(row: dict[str, Any]) -> CompetitorSpec:
         status=row["status"],
         parent_id=row["parent_id"],
         rationale=row["rationale"],
+        universe=row.get("universe", "crypto"),
     )
 
 
@@ -31,8 +32,8 @@ def insert_competitor(conn: psycopg.Connection, spec: CompetitorSpec) -> int:
     """Insert a competitor (name must be unique); returns its id."""
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO competitors (name, family, version, parent_id, params, role, status, rationale)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            "INSERT INTO competitors (name, family, version, parent_id, params, role, status, rationale, universe)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 spec.name,
                 spec.family,
@@ -42,6 +43,7 @@ def insert_competitor(conn: psycopg.Connection, spec: CompetitorSpec) -> int:
                 spec.role,
                 spec.status,
                 spec.rationale,
+                spec.universe,
             ),
         )
         return int(cur.fetchone()["id"])
@@ -59,6 +61,7 @@ def list_competitors(
     conn: psycopg.Connection,
     statuses: Sequence[str] | None = None,
     roles: Sequence[str] | None = None,
+    universe: str | None = None,
 ) -> list[CompetitorSpec]:
     """Competitors ordered by id, optionally filtered by status and/or role."""
     clauses: list[str] = []
@@ -69,6 +72,9 @@ def list_competitors(
     if roles is not None:
         clauses.append("role = ANY(%s)")
         params.append(list(roles))
+    if universe is not None:
+        clauses.append("universe = %s")
+        params.append(universe)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     with conn.cursor() as cur:
         cur.execute(f"SELECT {_SPEC_COLS} FROM competitors{where} ORDER BY id", params)

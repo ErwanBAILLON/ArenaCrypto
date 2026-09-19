@@ -19,3 +19,22 @@ spec:
   template:
     {{- include "arena.podTemplate" (dict "root" $ "component" "bootstrap" "args" (list "bootstrap" "--since" .Values.bootstrap.since) "resources" .Values.resources.heavy) | nindent 4 }}
 {{- end }}
+{{- if and .Values.classic.enabled .Values.classic.bootstrap.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: arena-bootstrap-classic
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bootstrap-classic
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 7200
+  ttlSecondsAfterFinished: 86400
+  template:
+    {{- include "arena.podTemplate" (dict "root" $ "component" "bootstrap-classic" "args" (list "bootstrap" "--since" .Values.classic.bootstrap.since) "resources" .Values.resources.heavy "universe" .Values.classic.universePath) | nindent 4 }}
+{{- end }}

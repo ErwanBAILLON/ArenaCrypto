@@ -1,0 +1,26 @@
+# Classic markets, daily bars from Yahoo Finance (public, no key). Tickers are
+# ETFs and FX pairs a retail investor can actually hold; indices themselves are
+# not tradable so their ETF proxies are used.
+name: classic
+exchange: yahoo
+bar: 1d
+symbols:
+  - SPY        # S&P 500
+  - QQQ        # Nasdaq 100
+  - IWM        # Russell 2000
+  - EXS1.DE    # DAX (iShares Core DAX)
+  - CAC.PA     # CAC 40 (Lyxor)
+  - EEM        # Emerging markets
+  - GLD        # Gold
+  - SLV        # Silver
+  - USO        # Oil (WTI)
+  - TLT        # US 20y Treasuries
+  - EURUSD=X   # Euro / dollar
+  - GBPUSD=X   # Pound / dollar
+binance_suffix: ""
+fees:
+  perp_taker: 0.0005   # broker commission + spread, per side
+  slippage: 0.0002
+  spot_taker: 0.0010
+nav0: 10000.0
+history_start: "2021-09-20T00:00:00Z"

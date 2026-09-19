@@ -66,11 +66,11 @@ def robust_regimes(robustness: dict[str, Any], cfg: GateConfig = DEFAULT_GATE) -
     return positive >= required, positive, len(judged)
 
 
-def null_sharpe_threshold(null_results: list[BacktestResult], q: float = 0.95) -> float:
+def null_sharpe_threshold(null_results: list[BacktestResult], q: float = 0.95, ppy: int = m.PPY_HOURLY) -> float:
     """Empirical ``q`` quantile of annualised Sharpe over the null runs (0 if none)."""
     if not null_results:
         return 0.0
-    return float(np.quantile([m.sharpe(res.returns) for res in null_results], q))
+    return float(np.quantile([m.sharpe(res.returns, ppy) for res in null_results], q))
 
 
 _NULL_JOB: dict[str, Any] = {}
@@ -78,7 +78,9 @@ _NULL_JOB: dict[str, Any] = {}
 
 def _null_worker(seed: int) -> BacktestResult:
     j = _NULL_JOB
-    return run(j["make_null"](seed), j["history"], j["symbols"], j["start"], j["end"], j["fees"])
+    return run(
+        j["make_null"](seed), j["history"], j["symbols"], j["start"], j["end"], j["fees"], bar_hours=j["bar_hours"]
+    )
 
 
 def run_null_distribution(
@@ -90,6 +92,7 @@ def run_null_distribution(
     fees: FeeModel,
     n: int = 200,
     workers: int | None = None,
+    bar_hours: int = 1,
 ) -> list[BacktestResult]:
     """Backtest ``make_null(seed)`` for ``seed in range(n)`` on the same period.
 
@@ -99,8 +102,10 @@ def run_null_distribution(
     """
     workers = workers or int(os.environ.get("ARENA_WORKERS", "1"))
     if workers <= 1 or n <= 1:
-        return [run(make_null(seed), history, symbols, start, end, fees) for seed in range(n)]
-    _NULL_JOB.update(make_null=make_null, history=history, symbols=symbols, start=start, end=end, fees=fees)
+        return [run(make_null(seed), history, symbols, start, end, fees, bar_hours=bar_hours) for seed in range(n)]
+    _NULL_JOB.update(
+        make_null=make_null, history=history, symbols=symbols, start=start, end=end, fees=fees, bar_hours=bar_hours
+    )
     try:
         ctx = multiprocessing.get_context("fork")
         with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
@@ -115,6 +120,7 @@ def evaluate(
     n_trials: int,
     cfg: GateConfig = DEFAULT_GATE,
     robustness: dict[str, Any] | None = None,
+    ppy: int = m.PPY_HOURLY,
 ) -> Verdict:
     """Concatenate the test-window returns of every fold and apply the §8 criteria.
 
@@ -134,8 +140,8 @@ def evaluate(
     folds_positive_frac = float(np.mean([x > 0 for x in fold_returns])) if fold_returns else 0.0
 
     metrics: dict[str, Any] = {
-        "sharpe": m.sharpe(r),
-        "sortino": m.sortino(r),
+        "sharpe": m.sharpe(r, ppy),
+        "sortino": m.sortino(r, ppy),
         "max_drawdown": m.max_drawdown(r),
         "profit_factor": m.profit_factor(r),
         "total_return": m.total_return(r),

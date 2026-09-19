@@ -5,6 +5,13 @@
   (dict "name" "challenger" "args" (list "challenger") "schedule" .Values.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false)
   (dict "name" "retrain"    "args" (list "retrain")    "schedule" .Values.schedules.retrain    "resources" .Values.resources.heavy "deadline" 21600 "tz" false)
 }}
+{{- if .Values.classic.enabled }}
+{{- $u := .Values.classic.universePath }}
+{{- $jobs = concat $jobs (list
+  (dict "name" "classic-tick"       "args" (list "tick")       "schedule" .Values.classic.schedules.tick       "resources" .Values.resources.tick  "deadline" 3300  "tz" false "universe" $u)
+  (dict "name" "classic-challenger" "args" (list "challenger") "schedule" .Values.classic.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false "universe" $u)
+) }}
+{{- end }}
 {{- range $j := $jobs }}
 ---
 apiVersion: batch/v1
@@ -33,5 +40,5 @@ spec:
       backoffLimit: 1
       activeDeadlineSeconds: {{ $j.deadline }}
       template:
-        {{- include "arena.podTemplate" (dict "root" $ "component" $j.name "args" $j.args "resources" $j.resources) | nindent 8 }}
+        {{- include "arena.podTemplate" (dict "root" $ "component" $j.name "args" $j.args "resources" $j.resources "universe" $j.universe) | nindent 8 }}
 {{- end }}

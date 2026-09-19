@@ -33,9 +33,10 @@ def warmup_bars(params: dict[str, Any], bars_per_day: int = 24) -> int:
     return max(int(params["trend_slow"]), vol_window + int(params["vol_lookback_days"]) * bars_per_day) + 1
 
 
-def regime_label(snap: Snapshot, symbol: str = "BTC", params: dict[str, Any] | None = None) -> str:
+def regime_label(snap: Snapshot, symbol: str | None = None, params: dict[str, Any] | None = None) -> str:
     """Classify the market state from ``symbol``'s 1h closes at ``snap.ts``."""
     p = {**DEFAULT_PARAMS, **(params or {})}
+    symbol = symbol or p.get("ref_symbol") or snap.reference
     close = snap.candles(symbol, "1h")["close"]
     bpd = snap.bars_per_day
     if len(close) < warmup_bars(p, bpd):
@@ -61,16 +62,16 @@ class Regime(HoldingCompetitor):
 
     def compute(self, snap: Snapshot) -> Decision:
         p = self.params
-        label = regime_label(snap, "BTC", p)
+        label = regime_label(snap, None, p)
         reason = {"regime": label}
         out: Decision = {}
         if label == "bull_calm":
             w = float(p["bull_weight"]) / 2
-            for sym in ("BTC", "ETH"):
-                if sym in snap.symbols:
-                    out[sym] = Target(weight=w, conviction=0.7, reason=reason)
+            leaders = [snap.reference] + [s for s in snap.symbols if s != snap.reference][:1]
+            for sym in leaders:
+                out[sym] = Target(weight=w, conviction=0.7, reason=reason)
         elif label == "bull_vol":
-            out["BTC"] = Target(weight=float(p["bull_weight"]) / 2, conviction=0.5, reason=reason)
+            out[snap.reference] = Target(weight=float(p["bull_weight"]) / 2, conviction=0.5, reason=reason)
         elif label == "range":
             w = float(p["range_carry_weight"]) / 2
             top = [(s, m) for s, m in rank_funding(snap, CARRY_LOOKBACK_DAYS) if m > 0][:2]

@@ -22,7 +22,7 @@ from arena.core.types import Alert, CompetitorSpec, Decision
 from arena.core.universe import Universe
 from arena.runner import allocator, drift, promotion
 from arena.runner.history import load_history, snapshot_from_history
-from arena.runner.ingest import EXCHANGE, ingest_market
+from arena.runner.ingest import ingest_market
 from arena.settings import Settings
 from arena.store import books as bstore
 from arena.store import candles as cstore
@@ -31,7 +31,7 @@ from arena.store.state import load_state, save_state
 
 log = logging.getLogger(__name__)
 
-HISTORY_BARS = 24 * 260  # covers the largest warm-up (regime: ~5041 bars) with margin
+HISTORY_DAYS = 260  # covers the largest warm-up (regime: ~210 days) with margin, whatever the bar size
 SIGNAL_MIN_DELTA = 0.25
 SIGNAL_COOLDOWN = timedelta(hours=4)
 ALLOC_WINDOW = timedelta(days=60)
@@ -50,9 +50,9 @@ class TickReport:
     started_at: datetime | None = None
 
 
-def decision_bar(now: datetime) -> pd.Timestamp:
-    """Last closed 1h bar label (candles are labelled by close time)."""
-    return pd.Timestamp(now).floor("1h")
+def decision_bar(now: datetime, bar_hours: int = 1) -> pd.Timestamp:
+    """Last closed bar label (candles are labelled by close time): the hour for 1h bars, midnight UTC for daily."""
+    return pd.Timestamp(now).floor("1h" if bar_hours == 1 else "1D")
 
 
 def fees_of(universe: Universe) -> FeeModel:
@@ -120,9 +120,9 @@ def run(
     rep = TickReport(started_at=datetime.now(UTC))
     if ingest and client is not None:
         rep.ingested = ingest_market(conn, client, universe, now)
-    ts = decision_bar(now)
-    last_bar = cstore.last_candle_ts(conn, EXCHANGE, "BTC")
-    stale = drift.stale_data(last_bar, now)
+    ts = decision_bar(now, universe.bar_hours)
+    last_bar = cstore.last_candle_ts(conn, universe.exchange, universe.reference, tf=universe.bar)
+    stale = drift.stale_data(last_bar, now, max_lag_bars=2 if universe.bar_hours == 1 else 4 * 24)
     if stale:
         bstore.add_alert(conn, stale)
         conn.commit()
@@ -131,20 +131,21 @@ def run(
     ts = min(ts, pd.Timestamp(last_bar))
     rep.ts = ts.to_pydatetime()
 
-    history = load_history(conn, universe, ts - timedelta(hours=HISTORY_BARS), ts)
+    history = load_history(conn, universe, ts - timedelta(days=HISTORY_DAYS), ts)
     if history.candles.empty:
         return rep
-    snap = snapshot_from_history(history, ts, universe.symbols, cstore.latest_hl_funding(conn))
+    hl = cstore.latest_hl_funding(conn) if universe.exchange == "binance" else None
+    snap = snapshot_from_history(history, ts, universe.symbols, hl, bar_hours=universe.bar_hours)
     closes = snap.closes()
     prices = {s: float(closes[s].iloc[-1]) for s in closes.columns if pd.notna(closes[s].iloc[-1])}
-    regime = regime_label(snap)
+    regime = regime_label(snap, universe.reference)
     fund_8h = {s: float(snap.funding(s).iloc[-1]) for s in universe.symbols if len(snap.funding(s))}
     fees = fees_of(universe)
 
-    specs = [s for s in registry.list_competitors(conn, statuses=list(ACTIVE))]
+    specs = [s for s in registry.list_competitors(conn, statuses=list(ACTIVE), universe=universe.name)]
     for spec in specs:
         try:
-            _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, universe.nav0, rep)
+            _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, universe, rep)
             conn.commit()
         except Exception as exc:  # isolate competitors
             conn.rollback()
@@ -191,19 +192,21 @@ def record_tick(conn: psycopg.Connection, rep: TickReport) -> None:
     conn.commit()
 
 
-def _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, nav0, rep: TickReport) -> None:
+def _run_one(
+    conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, universe: Universe, rep: TickReport
+) -> None:
     last_row = bstore.last_book_row(conn, spec.id)
     if last_row is not None and pd.Timestamp(last_row.ts) >= ts:
         rep.skipped.append(spec.name)
         return
-    comp = build(_with_model(conn, spec))
+    comp = build(_with_model(conn, spec), bar_hours=universe.bar_hours)
     comp.restore_state(load_state(conn, spec.id))
     decision = comp.decide(snap)
 
     prev = bstore.last_targets(conn, spec.id)
     prev_positions = prev[1] if prev else {}
     if last_row is None:
-        book = Book(nav=nav0, fees=fees)
+        book = Book(nav=universe.nav0, fees=fees)
         prev_prices, funding = dict(prices), {}
     else:
         book = Book.restore(last_row.nav, prev_positions, fees)
@@ -216,7 +219,8 @@ def _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fee
             f = history.funding[(history.funding["ts"] > prev_ts) & (history.funding["ts"] <= ts)]
             funding = f.groupby("symbol")["rate"].sum().to_dict()
     row = book.step(ts, prices, prev_prices, funding, decision)
-    bstore.write_targets(conn, spec.id, ts, decision)
+    exits = [s for s, (_, w) in prev_positions.items() if w != 0.0 and (s not in decision or decision[s].weight == 0.0)]
+    bstore.write_targets(conn, spec.id, ts, decision, exits=exits)
     bstore.write_book_row(conn, spec.id, row)
     new_positions = {sym: (t.kind, round(t.weight, 6)) for sym, t in decision.items() if t.weight != 0.0}
     if new_positions != {sym: (k, round(w, 6)) for sym, (k, w) in prev_positions.items() if w != 0.0}:

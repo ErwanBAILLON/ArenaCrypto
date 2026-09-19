@@ -42,9 +42,9 @@ def _frame(rows: list[dict], cols: list[str]) -> pd.DataFrame:
     return df
 
 
-def upsert_candles(conn: psycopg.Connection, exchange: str, df: pd.DataFrame) -> int:
+def upsert_candles(conn: psycopg.Connection, exchange: str, df: pd.DataFrame, tf: str = TF) -> int:
     """Insert 1h candles (columns symbol, ts, open, high, low, close, volume); returns rows inserted."""
-    rows = [(exchange, s, TF, ts, o, h, lo, c, v) for s, ts, o, h, lo, c, v in _rows(df, CANDLE_COLS)]
+    rows = [(exchange, s, tf, ts, o, h, lo, c, v) for s, ts, o, h, lo, c, v in _rows(df, CANDLE_COLS)]
     return _insert_ignore(
         conn,
         "INSERT INTO candles (exchange, symbol, tf, ts, open, high, low, close, volume)"
@@ -89,7 +89,7 @@ def upsert_hl_snapshot(conn: psycopg.Connection, ts: datetime, df: pd.DataFrame)
 
 
 def read_candles(
-    conn: psycopg.Connection, exchange: str, symbols: Sequence[str], start: datetime, end: datetime
+    conn: psycopg.Connection, exchange: str, symbols: Sequence[str], start: datetime, end: datetime, tf: str = TF
 ) -> pd.DataFrame:
     """1h candles for ``symbols`` with ``start <= ts <= end``, ordered by (symbol, ts)."""
     with conn.cursor() as cur:
@@ -97,7 +97,7 @@ def read_candles(
             "SELECT symbol, ts, open, high, low, close, volume FROM candles"
             " WHERE exchange = %s AND tf = %s AND symbol = ANY(%s) AND ts BETWEEN %s AND %s"
             " ORDER BY symbol, ts",
-            (exchange, TF, list(symbols), start, end),
+            (exchange, tf, list(symbols), start, end),
         )
         return _frame(cur.fetchall(), CANDLE_COLS)
 
@@ -138,12 +138,12 @@ def latest_hl_funding(conn: psycopg.Connection) -> dict[str, float]:
         return {r["coin"]: float(r["funding"]) for r in cur.fetchall()}
 
 
-def last_candle_ts(conn: psycopg.Connection, exchange: str, symbol: str) -> datetime | None:
+def last_candle_ts(conn: psycopg.Connection, exchange: str, symbol: str, tf: str = TF) -> datetime | None:
     """Timestamp of the newest stored 1h candle for ``symbol``, or None."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT max(ts) AS ts FROM candles WHERE exchange = %s AND symbol = %s AND tf = %s",
-            (exchange, symbol, TF),
+            (exchange, symbol, tf),
         )
         row = cur.fetchone()
     return row["ts"] if row and row["ts"] is not None else None

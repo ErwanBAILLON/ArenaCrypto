@@ -154,6 +154,10 @@ class Snapshot:
         return 24 // self.bar_hours
 
     @property
+    def reference(self) -> str:
+        return "BTC" if "BTC" in self.symbols else (self.symbols[0] if self.symbols else "BTC")
+
+    @property
     def bars_per_year(self) -> int:
         return 365 * self.bars_per_day
 

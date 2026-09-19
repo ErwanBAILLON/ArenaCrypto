@@ -55,19 +55,32 @@ class Admission:
 
 
 def null_threshold(
-    history: HistoryFrames, symbols: list[str], start: datetime, end: datetime, fees: FeeModel, n: int = N_NULL
+    history: HistoryFrames,
+    symbols: list[str],
+    start: datetime,
+    end: datetime,
+    fees: FeeModel,
+    n: int = N_NULL,
+    bar_hours: int = 1,
 ) -> float:
     """95th percentile Sharpe of seeded null_random runs over ``[start, end]``."""
-    return null_sharpe_threshold(null_sharpes(history, symbols, start, end, fees, n))
+    return null_sharpe_threshold(null_sharpes(history, symbols, start, end, fees, n, bar_hours))
 
 
 def null_sharpes(
-    history: HistoryFrames, symbols: list[str], start: datetime, end: datetime, fees: FeeModel, n: int = N_NULL
+    history: HistoryFrames,
+    symbols: list[str],
+    start: datetime,
+    end: datetime,
+    fees: FeeModel,
+    n: int = N_NULL,
+    bar_hours: int = 1,
 ) -> list[float]:
     from arena.judge.metrics import sharpe
 
-    make_null = lambda seed: REGISTRY["null_random"]({"seed": seed}, seed=seed)  # noqa: E731
-    return [sharpe(r.returns) for r in run_null_distribution(make_null, history, symbols, start, end, fees, n=n)]
+    make_null = lambda seed: REGISTRY["null_random"]({"seed": seed}, seed=seed, bar_hours=bar_hours)  # noqa: E731
+    results = run_null_distribution(make_null, history, symbols, start, end, fees, n=n, bar_hours=bar_hours)
+    return [sharpe(r.returns, 8760 // bar_hours) for r in results]
 
 
 def cached_null_threshold(
@@ -79,6 +92,7 @@ def cached_null_threshold(
     fees: FeeModel,
     n: int = N_NULL,
     q: float = 0.95,
+    bar_hours: int = 1,
 ) -> float:
     """Null threshold reused within the same ISO week (the distribution barely moves day to day).
 
@@ -89,7 +103,13 @@ def cached_null_threshold(
     import numpy as np
 
     week = pd.Timestamp(end).strftime("%G-W%V")
-    key = {"start": pd.Timestamp(start).isoformat(), "week": week, "n": n, "symbols": sorted(symbols)}
+    key = {
+        "start": pd.Timestamp(start).isoformat(),
+        "week": week,
+        "n": n,
+        "symbols": sorted(symbols),
+        "bar_hours": bar_hours,
+    }
     with conn.cursor() as cur:
         cur.execute(
             "SELECT metrics FROM trials WHERE family = 'null_random' AND kind = 'backtest' AND params = %s "
@@ -99,7 +119,7 @@ def cached_null_threshold(
         row = cur.fetchone()
     if row and row["metrics"].get("sharpes"):
         return float(np.quantile(row["metrics"]["sharpes"], q))
-    sharpes = null_sharpes(history, symbols, start, end, fees, n)
+    sharpes = null_sharpes(history, symbols, start, end, fees, n, bar_hours)
     registry.add_trial(
         conn,
         "null_random",
@@ -127,6 +147,7 @@ def admit(
     cfg: GateConfig = DEFAULT_GATE,
     notes: str = "",
     robustness_n: int = N_ROBUSTNESS,
+    bar_hours: int = 1,
 ) -> Admission:
     """Walk-forward ``family`` with ``params`` and record the trial. Never raises on rejection.
 
@@ -136,13 +157,18 @@ def admit(
     n_trials = registry.count_trials(conn, family) + 1
     trial_id = registry.add_trial(conn, family, "walkforward", params, {}, None, notes=notes)
     conn.commit()
-    make = make_competitor or (lambda: REGISTRY[family](params))
-    folds = run_walkforward(make, history, symbols, start, end, fees)
-    rob = run_robustness(make, history, symbols, start, end, fees, n=robustness_n) if robustness_n > 0 else None
-    verdict = evaluate(folds, null_thr, n_trials, cfg, robustness=rob)
+    make = make_competitor or (lambda: REGISTRY[family](params, bar_hours=bar_hours))
+    folds = run_walkforward(make, history, symbols, start, end, fees, bar_hours=bar_hours)
+    rob = (
+        run_robustness(make, history, symbols, start, end, fees, n=robustness_n, bar_hours=bar_hours)
+        if robustness_n > 0
+        else None
+    )
+    ppy = 8760 // bar_hours
+    verdict = evaluate(folds, null_thr, n_trials, cfg, robustness=rob, ppy=ppy)
     from arena.judge.metrics import sharpe
 
-    fold_sharpes = [sharpe(res.returns) for _, res in folds]
+    fold_sharpes = [sharpe(res.returns, ppy) for _, res in folds]
     metrics = _jsonable({**verdict.metrics, "fold_sharpes": fold_sharpes, "failed": verdict.failed})
     registry.finish_trial(conn, trial_id, metrics, "admitted" if verdict.admitted else "rejected")
     conn.commit()

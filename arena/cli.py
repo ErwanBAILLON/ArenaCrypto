@@ -24,15 +24,32 @@ log = logging.getLogger("arena")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 FOUNDERS = ["carry", "trend_ts", "xs_momentum", "regime", "meta_label"]
-NULLS = [
-    CompetitorSpec(None, "null_cash", "null_cash", 1, {}, role="null", status="champion"),
-    *[
-        CompetitorSpec(None, f"null_random_{i}", "null_random", 1, {"seed": i}, role="null", status="champion")
-        for i in range(5)
-    ],
-    CompetitorSpec(None, "bench_btc_hold", "bench_btc_hold", 1, {}, role="benchmark", status="champion"),
-    CompetitorSpec(None, "bench_carry_equal", "bench_carry_equal", 1, {}, role="benchmark", status="champion"),
-]
+FUNDING_FAMILIES = {"carry", "bench_carry_equal"}  # need perpetual funding: crypto only
+
+
+def _uname(universe, name: str) -> str:
+    """Competitor names are global: suffix them outside the historical crypto universe."""
+    return name if universe.name == "crypto" else f"{name}_{universe.name}"
+
+
+def founders_for(universe) -> list[str]:
+    return [f for f in FOUNDERS if universe.exchange == "binance" or f not in FUNDING_FAMILIES]
+
+
+def nulls_for(universe) -> list[CompetitorSpec]:
+    """Null models and benchmarks of a universe (the classic one has no funding, hence no carry benchmark)."""
+    u = universe.name
+    mk = lambda name, fam, params, role: CompetitorSpec(  # noqa: E731
+        None, _uname(universe, name), fam, 1, params, role=role, status="champion", universe=u
+    )
+    specs = [mk("null_cash", "null_cash", {}, "null")]
+    specs += [mk(f"null_random_{i}", "null_random", {"seed": i}, "null") for i in range(5)]
+    if universe.exchange == "binance":
+        specs.append(mk("bench_btc_hold", "bench_btc_hold", {}, "benchmark"))
+        specs.append(mk("bench_carry_equal", "bench_carry_equal", {}, "benchmark"))
+    else:
+        specs.append(mk("bench_hold", "bench_hold", {"symbol": universe.reference}, "benchmark"))
+    return specs
 
 
 def _ctx():
@@ -119,7 +136,9 @@ def _history_and_null(conn, universe, end: datetime):
     history = load_history(conn, universe, universe.history_start, end)
     fees = fees_of(universe)
     start = pd.Timestamp(universe.history_start)
-    thr = admission.cached_null_threshold(conn, history, universe.symbols, start, end, fees)
+    thr = admission.cached_null_threshold(
+        conn, history, universe.symbols, start, end, fees, bar_hours=universe.bar_hours
+    )
     return history, fees, start, thr
 
 
@@ -133,7 +152,19 @@ def judge(
     fam, params = (spec.family, spec.params) if spec else (family, {})
     end = _now()
     history, fees, start, thr = _history_and_null(conn, universe, end)
-    adm = admission.admit(conn, fam, params, history, universe.symbols, start, end, fees, thr, notes="cli judge")
+    adm = admission.admit(
+        conn,
+        fam,
+        params,
+        history,
+        universe.symbols,
+        start,
+        end,
+        fees,
+        thr,
+        notes="cli judge",
+        bar_hours=universe.bar_hours,
+    )
     v = adm.verdict
     typer.echo(f"{fam}: {'ADMITTED' if v.admitted else 'REJECTED'} failed={v.failed}")
     for k, val in v.metrics.items():
@@ -196,34 +227,47 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
     if not skip_backfill:
         backfill(since)
     existing = {s.name for s in registry.list_competitors(conn)}
-    for spec in NULLS:
+    for spec in nulls_for(universe):
         if spec.name not in existing:
             registry.insert_competitor(conn, spec)
     conn.commit()
     end = _now()
     history, fees, start, thr = _history_and_null(conn, universe, end)
     typer.echo(f"null 95th pct Sharpe: {thr:.3f}")
-    families_present = {s.family for s in registry.list_competitors(conn, statuses=["champion", "challenger"])}
+    families_present = {
+        s.family for s in registry.list_competitors(conn, statuses=["champion", "challenger"], universe=universe.name)
+    }
     lines = []
-    for fam in FOUNDERS:
+    for fam in founders_for(universe):
         if fam in families_present:
             lines.append(f"{fam}: already present")
             continue
         params = dict(REGISTRY[fam].default_params)
         params.pop("model_str", None)
         adm = admission.admit(
-            conn, fam, params, history, universe.symbols, start, end, fees, thr, notes="bootstrap founder"
+            conn,
+            fam,
+            params,
+            history,
+            universe.symbols,
+            start,
+            end,
+            fees,
+            thr,
+            notes="bootstrap founder",
+            bar_hours=universe.bar_hours,
         )
         status = "champion" if adm.verdict.admitted else "challenger"
         cid = registry.insert_competitor(
             conn,
             CompetitorSpec(
                 None,
-                f"{fam}_v1",
+                _uname(universe, f"{fam}_v1"),
                 fam,
                 1,
                 params,
                 status=status,
+                universe=universe.name,
                 rationale=(
                     "founder; gate "
                     f"{'admitted' if adm.verdict.admitted else 'rejected: ' + ', '.join(adm.verdict.failed)}; "
@@ -248,7 +292,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
             f"{fam}: {status} sharpe={m.get('sharpe', 0):.2f} dsr={m.get('dsr', 0):.2f} "
             f"p={m.get('bootstrap_p', 1):.2f} mdd={m.get('max_drawdown', 0):.1%}"
         )
-    if "news" not in families_present:
+    if "news" not in families_present and universe.exchange == "binance":  # the news lexicon is crypto-specific
         registry.insert_competitor(
             conn,
             CompetitorSpec(
@@ -258,12 +302,13 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
                 1,
                 {},
                 status="challenger",
+                universe=universe.name,
                 rationale="founder; forward-only family, not backtest-gated",
             ),
         )
         conn.commit()
         lines.append("news: challenger (forward-only)")
-    summary = "Arena bootstrapped\n" + "\n".join(lines) + f"\nnull 95th pct Sharpe {thr:.2f}"
+    summary = f"Arena bootstrapped ({universe.name})\n" + "\n".join(lines) + f"\nnull 95th pct Sharpe {thr:.2f}"
     typer.echo(summary)
     sender.send(settings, templates.event_alert("info", summary))
 

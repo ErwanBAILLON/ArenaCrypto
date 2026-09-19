@@ -37,7 +37,7 @@ spec:
             - secretRef:
                 name: {{ .Values.secrets.targetName }}
           env:
-            {{- include "arena.env" . | nindent 12 }}
+            {{- include "arena.env" (dict "root" $) | nindent 12 }}
           # Readiness follows data freshness (/healthz is 503 when books are stale);
           # liveness is TCP only so a stale database never crashloops the pod.
           readinessProbe:

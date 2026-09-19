@@ -40,12 +40,12 @@ capabilities:
 
 {{/* Common env: from values + fixed paths */}}
 {{- define "arena.env" -}}
-{{- range $k, $v := .Values.env }}
+{{- range $k, $v := .root.Values.env }}
 - name: {{ $k }}
   value: {{ $v | quote }}
 {{- end }}
 - name: UNIVERSE_PATH
-  value: /app/config/universe.yaml
+  value: {{ .universe | default "/app/config/universe.yaml" }}
 - name: HOME
   value: /tmp
 {{- end }}
@@ -73,7 +73,7 @@ spec:
         - secretRef:
             name: {{ .root.Values.secrets.targetName }}
       env:
-        {{- include "arena.env" .root | nindent 8 }}
+        {{- include "arena.env" (dict "root" .root "universe" .universe) | nindent 8 }}
       resources:
         {{- toYaml .resources | nindent 8 }}
       securityContext:

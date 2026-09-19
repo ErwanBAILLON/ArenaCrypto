@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 
 import pandas as pd
@@ -14,13 +14,22 @@ from arena.core.types import Alert, BookRow, Decision
 _BOOK_COLS = ["ts", "nav", "ret", "gross", "turnover", "fees", "funding_pnl"]
 
 
-def write_targets(conn: psycopg.Connection, competitor_id: int, ts: datetime, decision: Decision) -> None:
-    """Persist the non-zero targets of a decision at ``ts`` (re-running overwrites)."""
+def write_targets(
+    conn: psycopg.Connection, competitor_id: int, ts: datetime, decision: Decision, exits: Iterable[str] = ()
+) -> None:
+    """Persist the non-zero targets of a decision at ``ts`` (re-running overwrites).
+
+    ``exits`` are symbols held at the previous bar and flat now: they get an
+    explicit zero-weight row so that a full exit to cash is visible in the
+    history (dashboard, digest) instead of being an absence.
+    """
     rows = [
         (competitor_id, ts, symbol, t.weight, t.conviction, t.kind, Jsonb(t.reason))
         for symbol, t in decision.items()
         if t.weight != 0.0
     ]
+    held = {s for s, t in decision.items() if t.weight != 0.0}
+    rows += [(competitor_id, ts, s, 0.0, 0.0, "perp", Jsonb({"exit": True})) for s in exits if s not in held]
     if not rows:
         return
     with conn.cursor() as cur:
@@ -45,7 +54,7 @@ def last_targets(conn: psycopg.Connection, competitor_id: int) -> tuple[datetime
         rows = cur.fetchall()
     if not rows:
         return None
-    return rows[0]["ts"], {r["symbol"]: (r["kind"], float(r["weight"])) for r in rows}
+    return rows[0]["ts"], {r["symbol"]: (r["kind"], float(r["weight"])) for r in rows if float(r["weight"]) != 0.0}
 
 
 def write_book_row(conn: psycopg.Connection, competitor_id: int, row: BookRow) -> None:

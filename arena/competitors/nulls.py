@@ -56,6 +56,18 @@ class BenchBtcHold(Competitor):
 
 
 @register
+class BenchHold(Competitor):
+    """Buy the universe's reference asset (param ``symbol``) and never move: the classic-markets benchmark."""
+
+    family = "bench_hold"
+    default_params = {"symbol": None}
+
+    def decide(self, snap: Snapshot) -> Decision:
+        sym = self.params.get("symbol") or snap.reference
+        return {sym: Target(weight=1.0, conviction=1.0, reason={"bench": "hold"})}
+
+
+@register
 class BenchCarryEqual(Competitor):
     """Equal-weight carry on every symbol that has funding data."""
 

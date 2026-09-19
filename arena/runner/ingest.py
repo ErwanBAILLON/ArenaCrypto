@@ -10,7 +10,7 @@ import pandas as pd
 import psycopg
 
 from arena.core.universe import Universe
-from arena.data import binance, hyperliquid, macro, rss
+from arena.data import binance, hyperliquid, macro, rss, yahoo
 from arena.nlp.scorer import VaderScorer
 from arena.store import candles as cstore
 from arena.store import news as nstore
@@ -60,6 +60,23 @@ def ingest_market(
     except Exception:
         conn.rollback()
         log.exception("hyperliquid snapshot failed")
+    return counts
+
+
+def ingest_yahoo(conn: psycopg.Connection, client: httpx.Client, universe: Universe, now: datetime) -> dict[str, int]:
+    """Closed daily bars for every Yahoo ticker of a classic-markets universe (5y on first run)."""
+    counts = {"candles": 0}
+    for sym in universe.symbols:
+        try:
+            last = cstore.last_candle_ts(conn, "yahoo", sym, tf="1d")
+            df = yahoo.daily(client, sym, range_="1mo" if last else "5y", now=now)
+            if not df.empty:
+                df["symbol"] = sym
+                counts["candles"] += cstore.upsert_candles(conn, "yahoo", df, tf="1d")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            log.exception("yahoo ingest failed for %s", sym)
     return counts
 
 

@@ -20,9 +20,11 @@ def load_history(
     conn: psycopg.Connection, universe: Universe, start: datetime, end: datetime, with_news: bool = True
 ) -> HistoryFrames:
     syms = universe.symbols
-    candles = cstore.read_candles(conn, EXCHANGE, syms, start, end)
-    funding = cstore.read_funding(conn, EXCHANGE, syms, start, end)
-    oi = cstore.read_open_interest(conn, EXCHANGE, syms, start, end)
+    ex = universe.exchange
+    candles = cstore.read_candles(conn, ex, syms, start, end, tf=universe.bar)
+    has_funding = ex == "binance"  # classic markets have no perpetual funding nor open interest
+    funding = cstore.read_funding(conn, ex, syms, start, end) if has_funding else None
+    oi = cstore.read_open_interest(conn, ex, syms, start, end) if has_funding else None
     news = (
         nstore.news_features(conn, syms, max(start, end - timedelta(days=30)), end, SCORER_VERSION)
         if with_news
@@ -33,6 +35,8 @@ def load_history(
 
 
 def snapshot_from_history(
-    h: HistoryFrames, ts: datetime, symbols: list[str], hl_funding: dict[str, float] | None = None
+    h: HistoryFrames, ts: datetime, symbols: list[str], hl_funding: dict[str, float] | None = None, bar_hours: int = 1
 ) -> Snapshot:
-    return Snapshot.from_long(ts, symbols, h.candles, h.funding, h.open_interest, hl_funding, h.news, h.macro_events)
+    return Snapshot.from_long(
+        ts, symbols, h.candles, h.funding, h.open_interest, hl_funding, h.news, h.macro_events, bar_hours=bar_hours
+    )

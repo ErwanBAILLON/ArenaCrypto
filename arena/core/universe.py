@@ -30,6 +30,11 @@ class Universe:
     bar: str = "1h"  # "1h" or "1d": the decision bar of this universe
 
     @property
+    def reference(self) -> str:
+        """Symbol used for regime labelling and warm-up: BTC when present, else the first symbol."""
+        return "BTC" if "BTC" in self.symbols else self.symbols[0]
+
+    @property
     def bar_hours(self) -> int:
         return {"1h": 1, "1d": 24}[self.bar]
 

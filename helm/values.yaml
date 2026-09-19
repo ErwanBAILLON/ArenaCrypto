@@ -36,6 +36,15 @@ resources:
     requests: { cpu: 400m, memory: 640Mi }   # keep tick+news+challenger+retrain under the 2Gi namespace quota
     limits: { cpu: "2", memory: 2Gi }
 
+# Second arena: classic markets (ETFs, FX) on daily Yahoo Finance bars.
+classic:
+  enabled: true
+  universePath: /app/config/universe-classic.yaml
+  schedules:
+    tick: "20 0 * * 2-6"        # after the US close is final (00:00 UTC bar), Tue-Sat
+    challenger: "0 6 * * 0"
+  bootstrap: { enabled: false, since: "2021-09-20" }
+
 bootstrap:
   enabled: false
   since: "2024-01-01"

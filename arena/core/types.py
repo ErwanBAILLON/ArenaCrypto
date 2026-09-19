@@ -41,6 +41,7 @@ class CompetitorSpec:
     status: Status = "candidate"
     parent_id: int | None = None
     rationale: str = ""
+    universe: str = "crypto"
 
 
 @dataclass

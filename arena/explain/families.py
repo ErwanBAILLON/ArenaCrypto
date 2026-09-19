@@ -113,6 +113,13 @@ CARDS: dict[str, FamilyCard] = {
         ["Cours du BTC"],
         "Jamais",
     ),
+    "bench_hold": FamilyCard(
+        "bench_hold",
+        "Repère : garder l'actif de référence",
+        "Achète l'actif de référence de l'univers (par exemple le S&P 500) et ne bouge plus. La question de base : le modèle fait-il mieux que simplement le détenir ?",
+        ["Cours de l'actif de référence"],
+        "Jamais",
+    ),
     "bench_carry_equal": FamilyCard(
         "bench_carry_equal",
         "Repère : carry sur tout",

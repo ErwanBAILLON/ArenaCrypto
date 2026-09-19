@@ -105,8 +105,10 @@ _ROB_JOB: dict[str, Any] = {}
 def _window_worker(window: Window) -> tuple[float, float]:
     j = _ROB_JOB
     w_start, w_end = window
-    res = run(j["make_competitor"](), j["history"], j["symbols"], w_start, w_end - BAR, j["fees"])
-    return m.sharpe(res.returns), m.total_return(res.returns)
+    res = run(
+        j["make_competitor"](), j["history"], j["symbols"], w_start, w_end - BAR, j["fees"], bar_hours=j["bar_hours"]
+    )
+    return m.sharpe(res.returns, 8760 // j["bar_hours"]), m.total_return(res.returns)
 
 
 def _run_windows(windows: list[Window], workers: int) -> list[tuple[float, float]]:
@@ -154,6 +156,7 @@ def run_robustness(
     n: int = 200,
     seed: int = 0,
     workers: int | None = None,
+    bar_hours: int = 1,
     min_days: int = 60,
     max_days: int = 180,
 ) -> dict[str, Any]:
@@ -168,7 +171,7 @@ def run_robustness(
     windows = sample_windows(start, end, n=n, min_days=min_days, max_days=max_days, seed=seed)
     closes = _reference_closes(history, symbols)
     labels = [label_window(closes, ws, we) for ws, we in windows]
-    _ROB_JOB.update(make_competitor=make_competitor, history=history, symbols=symbols, fees=fees)
+    _ROB_JOB.update(make_competitor=make_competitor, history=history, symbols=symbols, fees=fees, bar_hours=bar_hours)
     try:
         results = _run_windows(windows, workers)
     finally:

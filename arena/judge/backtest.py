@@ -113,6 +113,7 @@ def run(
     end: datetime | str,
     fees: FeeModel,
     nav0: float = 10_000.0,
+    bar_hours: int = 1,
 ) -> BacktestResult:
     """Step one ``Book`` over every hourly bar in ``[start, end]`` present in the candles.
 
@@ -141,6 +142,7 @@ def run(
         history.open_interest,
         news=history.news,
         macro_events=history.macro_events,
+        bar_hours=bar_hours,
     )
     warm = int(competitor.warmup_bars())
     book = Book(nav=nav0, fees=fees)
