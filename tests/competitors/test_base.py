@@ -18,7 +18,7 @@ def test_build_from_spec_merges_params_and_seed():
     comp = build(spec)
     assert isinstance(comp, Carry)
     assert comp.params["k"] == 2
-    assert comp.params["lookback_days"] == 3
+    assert comp.params["lookback_days"] == 14
     assert comp.seed == 7
     assert comp.warmup_bars() == 72
 

@@ -20,7 +20,7 @@ def test_positive_funding_on_eth_only(candles):
     assert set(d) == {"ETH"}
     t = d["ETH"]
     assert t.kind == "carry"
-    assert t.weight == pytest.approx(min(0.34, 1 / 3))
+    assert t.weight == pytest.approx(min(0.34, 1 / 5))
     assert t.conviction == pytest.approx(1.0)
     assert t.reason["mean_funding_8h"] == pytest.approx(0.0003) and t.reason["rank"] == 0
 
