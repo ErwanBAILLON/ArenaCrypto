@@ -20,7 +20,7 @@ def test_build_from_spec_merges_params_and_seed():
     assert comp.params["k"] == 2
     assert comp.params["lookback_days"] == 14
     assert comp.seed == 7
-    assert comp.warmup_bars() == 72
+    assert comp.warmup_bars() == 14 * 24
 
 
 def test_cap_gross_scales_only_when_needed():
