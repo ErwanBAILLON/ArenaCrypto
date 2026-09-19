@@ -4,7 +4,7 @@ version = "0.4.0"
 description = "Signal-only crypto research arena: competing models scored forward on public data, reported to Telegram."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-or-later" }
 dependencies = [
     "pandas>=2.2",
     "numpy>=1.26",
