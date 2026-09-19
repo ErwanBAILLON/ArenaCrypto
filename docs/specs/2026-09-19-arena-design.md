@@ -203,7 +203,7 @@ Background, weekly (Sunday 03:00 UTC) under a CPU-limited CronJob:
 
 - **Rule families** (`carry`, `trend_ts`, `xs_momentum`, `regime` v1): Optuna
   TPE over the declared parameter space, objective = mean out-of-fold Sharpe in
-  the nested walk-forward, ≤ 40 evaluations per family per week, every
+  the nested walk-forward, ≤ 15 evaluations per family per week (measured: ~3 min per trend_ts evaluation on 2 cores), every
   evaluation stored as a `trials` row (this is the trial counter that deflates
   every Sharpe). The best candidate that passes the gate is inserted as
   `challenger` with `parent_id` = current champion.

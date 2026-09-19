@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-19
+
+### Changed
+- Weekly challenger defaults to 15 Optuna trials per family (40 could exceed the 6h job deadline on 2 cores).
+
+
 ## [0.2.0] - 2026-09-19
 
 ### Added

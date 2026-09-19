@@ -141,7 +141,7 @@ def judge(
 
 
 @app.command()
-def challenger(family: str = typer.Option("", help="Restrict to one rule family"), n_trials: int = 40) -> None:
+def challenger(family: str = typer.Option("", help="Restrict to one rule family"), n_trials: int = 15) -> None:
     """Weekly Optuna search → new challengers for rule families."""
     from arena.challenger import optimize
 
