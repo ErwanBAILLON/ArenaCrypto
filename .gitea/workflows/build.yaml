@@ -35,7 +35,10 @@ jobs:
 
       - name: Test
         run: |
-          pip install uv
+          # runner image is node-based: no pip. uv installs itself and a Python.
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv python install 3.12
           uv sync --frozen --extra dev
           uv run pytest -q
 
