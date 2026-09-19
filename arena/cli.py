@@ -23,7 +23,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("arena")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-FOUNDERS = ["carry", "trend_ts", "xs_momentum", "regime", "meta_label"]
+# (family, name, params overriding the family defaults); one family may seed several founders
+FOUNDERS: list[tuple[str, str, dict]] = [
+    ("carry", "carry_v1", {}),
+    ("trend_ts", "trend_ts_v1", {}),
+    ("xs_momentum", "xs_momentum_v1", {}),
+    ("regime", "regime_v1", {}),
+    ("meta_label", "meta_label_v1", {}),
+    ("price_action", "price_action_swing_v1", {"style": "swing"}),
+    ("price_action", "price_action_position_v1", {"style": "position"}),
+]
 FUNDING_FAMILIES = {"carry", "bench_carry_equal"}  # need perpetual funding: crypto only
 
 
@@ -32,8 +41,8 @@ def _uname(universe, name: str) -> str:
     return name if universe.name == "crypto" else f"{name}_{universe.name}"
 
 
-def founders_for(universe) -> list[str]:
-    return [f for f in FOUNDERS if universe.exchange == "binance" or f not in FUNDING_FAMILIES]
+def founders_for(universe) -> list[tuple[str, str, dict]]:
+    return [f for f in FOUNDERS if universe.exchange == "binance" or f[0] not in FUNDING_FAMILIES]
 
 
 def nulls_for(universe) -> list[CompetitorSpec]:
@@ -240,15 +249,15 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
     end = _now()
     history, fees, start, thr = _history_and_null(conn, universe, end)
     typer.echo(f"null 95th pct Sharpe: {thr:.3f}")
-    families_present = {
-        s.family for s in registry.list_competitors(conn, statuses=["champion", "challenger"], universe=universe.name)
+    names_present = {
+        s.name for s in registry.list_competitors(conn, statuses=["champion", "challenger"], universe=universe.name)
     }
     lines = []
-    for fam in founders_for(universe):
-        if fam in families_present:
-            lines.append(f"{fam}: already present")
+    for fam, name, extra in founders_for(universe):
+        if _uname(universe, name) in names_present:
+            lines.append(f"{name}: already present")
             continue
-        params = dict(REGISTRY[fam].default_params)
+        params = {**REGISTRY[fam].default_params, **extra}
         params.pop("model_str", None)
         adm = admission.admit(
             conn,
@@ -268,7 +277,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
             conn,
             CompetitorSpec(
                 None,
-                _uname(universe, f"{fam}_v1"),
+                _uname(universe, name),
                 fam,
                 1,
                 params,
@@ -288,17 +297,17 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
                     kind="rejected",
                     competitor_id=cid,
                     payload={
-                        "detail": f"{fam}_v1 rejected at gate ({', '.join(adm.verdict.failed)}); enters as challenger"
+                        "detail": f"{name} rejected at gate ({', '.join(adm.verdict.failed)}); enters as challenger"
                     },
                 ),
             )
         conn.commit()
         m = adm.verdict.metrics
         lines.append(
-            f"{fam}: {status} sharpe={m.get('sharpe', 0):.2f} dsr={m.get('dsr', 0):.2f} "
+            f"{name}: {status} sharpe={m.get('sharpe', 0):.2f} dsr={m.get('dsr', 0):.2f} "
             f"p={m.get('bootstrap_p', 1):.2f} mdd={m.get('max_drawdown', 0):.1%}"
         )
-    if "news" not in families_present and universe.exchange == "binance":  # the news lexicon is crypto-specific
+    if "news_v1" not in names_present and universe.exchange == "binance":  # the news lexicon is crypto-specific
         registry.insert_competitor(
             conn,
             CompetitorSpec(

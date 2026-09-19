@@ -19,6 +19,43 @@ def _pct(v: Any, digits: int = 1) -> str:
     return f"{float(v) * 100:+.{digits}f} %"
 
 
+def _num(v: Any) -> str:
+    """Price rendering: two decimals under 1 000, grouped thousands above (3 120)."""
+    x = float(v)
+    if abs(x) >= 1000:
+        return f"{x:,.0f}".replace(",", " ")
+    return f"{x:.2f}"
+
+
+CANDLE_FR = {
+    ("bullish", 1): "chandelier haussier",
+    ("bearish", -1): "chandelier baissier",
+    ("engulfing", 1): "englobante haussière",
+    ("engulfing", -1): "englobante baissière",
+    ("hammer", 1): "marteau de retournement",
+    ("hammer", -1): "étoile filante de retournement",
+}
+
+
+def _price_action(symbol: str, t: Target, r: dict[str, Any], w: str) -> str:
+    side = 1 if t.weight > 0 else -1
+    setup = str(r.get("setup", ""))
+    candle = CANDLE_FR.get((str(r.get("candle", "")), side), str(r.get("candle", "")))
+    stop = f"stop {'sous' if side > 0 else 'au-dessus de'} {_num(r.get('stop', 0.0))}"
+    head = f"{direction(t).capitalize()} {symbol} ({w})"
+    if setup in ("breakout", "breakdown"):
+        level = "de la résistance" if setup == "breakout" else "du support"
+        vr = r.get("volume_ratio")
+        vol = f" avec un volume {float(vr):.1f}× la normale" if vr is not None else ""
+        return f"{head} : cassure {level} {_num(r.get('level', 0.0))}{vol}, {candle} ; {stop}."
+    if setup in ("fib_pullback_long", "fib_pullback_short"):
+        impulse = "haussière" if setup.endswith("long") else "baissière"
+        retrace = float(r.get("retrace", 0.5)) * 100
+        zone = f"zone {_num(r.get('zone_low', 0.0))}–{_num(r.get('zone_high', 0.0))}"
+        return f"{head} : repli à {retrace:.0f} % de la dernière impulsion {impulse} ({zone}), {candle} ; {stop}."
+    return f"{head} : niveau {_num(r.get('level', 0.0))}, {candle} ; {stop}."
+
+
 def direction(t: Target) -> str:
     if t.kind == "carry":
         return "carry" if t.weight > 0 else "à plat"
@@ -60,6 +97,8 @@ def explain_target(family: str, symbol: str, t: Target) -> str:
             f"{direction(t).capitalize()} {symbol} ({w}) : signal de base retenu, probabilité de gain estimée {float(r.get('p_win', 0)) * 100:.0f} %, "
             f"marché {REGIME_FR.get(str(r.get('regime')), '')}."
         )
+    if family == "price_action":
+        return _price_action(symbol, t, r, w)
     if family == "news":
         return f"Achat {symbol} ({w}) : sentiment 7 jours {float(r.get('sent_7d', 0)):+.2f} et en hausse, {int(r.get('n_7d', 0))} articles."
     if family.startswith("null") or family.startswith("bench"):

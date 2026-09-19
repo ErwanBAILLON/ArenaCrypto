@@ -91,6 +91,24 @@ CARDS: dict[str, FamilyCard] = {
         "À chaque heure, positions conservées tant que le sentiment tient",
         ["Jamais backtesté : ses scores n'existent qu'en direct, il est jugé uniquement dans l'arène."],
     ),
+    "price_action": FamilyCard(
+        "price_action",
+        "Analyse technique classique (price action)",
+        "Trace mécaniquement les supports et résistances (plus hauts et plus bas de swing), achète une cassure de résistance confirmée par le volume "
+        "et un chandelier haussier, ou un repli de Fibonacci sur la dernière impulsion marqué par un chandelier de retournement (marteau, englobante) ; symétrique à la vente. "
+        "Horizon swing : quelques jours à quelques semaines ; horizon position : plusieurs mois.",
+        [
+            "Cours natifs (1 h crypto, 1 j classique) : plus hauts et plus bas de swing sur la période de repérage",
+            "Volume comparé à la médiane de la période",
+            "Forme du dernier chandelier (ouverture, plus haut, plus bas, clôture)",
+            "ATR 14 pour graduer la force de la cassure",
+        ],
+        "Une fois par jour à 00:00 UTC (swing) ou le lundi à 00:00 UTC (position), tient jusqu'au stop",
+        [
+            "Les niveaux d'un chartiste sont subjectifs ; on les rend mécaniques (extrema locaux), ce qui n'est qu'une lecture parmi d'autres.",
+            "Le backtest ne voit pas les mèches intra-barre : un stop touché puis repris dans la même barre n'est pas détecté.",
+        ],
+    ),
     "null_cash": FamilyCard(
         "null_cash",
         "Repère : ne rien faire",
@@ -175,6 +193,21 @@ def params_in_words(family: str, params: dict[str, Any]) -> list[str]:
             f"bases : {bases}",
             f"seuil de confiance {float(p.get('threshold', 0.55)) * 100:.0f} %",
             "modèle appris chargé" if p.get("model_str") else "sans modèle (pass-through)",
+        ]
+    elif family == "price_action":
+        style = str(p.get("style", "swing"))
+        horizon = (
+            "position (plusieurs mois, re-décision le lundi)"
+            if style == "position"
+            else "swing (jours à semaines, re-décision quotidienne)"
+        )
+        out += [
+            f"horizon {horizon}",
+            f"pivots sur ±{p.get('pivot_days', 10)} jours, niveaux repérés sur {p.get('level_lookback_days', 60)} jours",
+            f"cassure au-delà de {float(p.get('breakout_buffer', 0.002)) * 100:.1f} % du niveau avec volume > {float(p.get('min_volume_ratio', 1.2)):.1f}× la médiane",
+            f"repli de Fibonacci entre {float(p.get('fib_low', 0.382)) * 100:.1f} % et {float(p.get('fib_high', 0.618)) * 100:.1f} %",
+            f"stop au plus bas / plus haut des {p.get('stop_days', 20)} derniers jours",
+            f"jusqu'à {p.get('k', 4)} positions de {float(p.get('max_weight', 0.25)) * 100:.0f} % chacune",
         ]
     elif family == "news":
         out += [

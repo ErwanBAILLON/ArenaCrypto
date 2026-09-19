@@ -52,4 +52,22 @@ def regime(t: optuna.Trial) -> dict[str, Any]:
     }
 
 
-SPACES: dict[str, Space] = {"carry": carry, "trend_ts": trend_ts, "xs_momentum": xs_momentum, "regime": regime}
+def price_action(t: optuna.Trial) -> dict[str, Any]:
+    return {
+        "style": t.suggest_categorical("style", ["swing", "position"]),
+        "breakout_buffer": t.suggest_float("breakout_buffer", 0.0, 0.01),
+        "min_volume_ratio": t.suggest_float("min_volume_ratio", 1.0, 2.0),
+        "fib_low": t.suggest_float("fib_low", 0.3, 0.5),
+        "fib_high": t.suggest_float("fib_high", 0.55, 0.8),
+        "max_weight": t.suggest_float("max_weight", 0.15, 0.35),
+        "k": t.suggest_int("k", 2, 6),
+    }
+
+
+SPACES: dict[str, Space] = {
+    "carry": carry,
+    "trend_ts": trend_ts,
+    "xs_momentum": xs_momentum,
+    "regime": regime,
+    "price_action": price_action,
+}

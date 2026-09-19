@@ -29,6 +29,8 @@ def test_reasons_are_sentences_with_values():
 
 def test_params_in_words_and_gate():
     assert any("14 jours" in s for s in params_in_words("carry", {}))
+    assert any("le lundi" in s for s in params_in_words("price_action", {"style": "position"}))
+    assert any("180 jours" in s for s in params_in_words("price_action", {"level_lookback_days": 180}))
     m = {
         "folds_positive_frac": 0.75,
         "fold_sharpes": [1, 2, -1, 3],
