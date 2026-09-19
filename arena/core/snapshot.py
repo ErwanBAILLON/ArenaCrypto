@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 CANDLE_COLS = ["open", "high", "low", "close", "volume"]
+MAX_BARS = 6000  # 250 days of 1h bars: above the longest warm-up (regime, 5041), bounds per-bar indicator cost
 NEWS_COLS = ["sent_24h", "sent_7d", "n_24h", "n_7d", "shock"]
 _TF_RULE = {"1h": "1h", "4h": "4h", "1d": "1D"}
 
@@ -146,7 +147,7 @@ class Snapshot:
         if base is None or base.empty:
             out = _empty_candles()
         else:
-            cut = base.loc[: self.ts]
+            cut = base.loc[: self.ts].tail(MAX_BARS)
             out = resample_candles(cut, tf) if tf != "1h" else cut
         self._cache[key] = out
         return out

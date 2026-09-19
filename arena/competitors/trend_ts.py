@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from arena.competitors.base import Competitor, cap_gross, register
-from arena.competitors.features import atr, ema, pct_return, realised_vol
+from arena.competitors.features import last_atr, last_ema, last_realised_vol, pct_return
 from arena.core.snapshot import Snapshot
 from arena.core.types import Decision, Target
 
@@ -38,8 +38,8 @@ class TrendTS(Competitor):
             if len(c) < self.warmup_bars():
                 continue
             close = c["close"]
-            e_fast = float(ema(close, int(p["fast"])).iloc[-1])
-            e_slow = float(ema(close, int(p["slow"])).iloc[-1])
+            e_fast = last_ema(close, int(p["fast"]))
+            e_slow = last_ema(close, int(p["slow"]))
             r_short = pct_return(close, int(p["lb_short_days"]) * 24)
             r_long = pct_return(close, int(p["lb_long_days"]) * 24)
             if e_fast > e_slow and r_short > 0 and r_long > 0:
@@ -49,12 +49,12 @@ class TrendTS(Competitor):
             else:
                 continue
             last = float(close.iloc[-1])
-            stop_band = float(p["atr_stop_mult"]) * float(atr(c).iloc[-1])
+            stop_band = float(p["atr_stop_mult"]) * last_atr(c)
             if direction == 1 and last < e_fast - stop_band:
                 continue
             if direction == -1 and last > e_fast + stop_band:
                 continue
-            vol = float(realised_vol(close, int(p["vol_window"])).iloc[-1])
+            vol = last_realised_vol(close, int(p["vol_window"]))
             size = min(float(p["max_weight"]), float(p["target_vol"]) / max(vol, VOL_FLOOR))
             conviction = float(np.clip(abs(r_short) / CONVICTION_SCALE, 0.0, 1.0))
             out[sym] = Target(

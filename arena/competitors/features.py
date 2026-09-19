@@ -16,6 +16,9 @@ def ema(s: pd.Series, span: int) -> pd.Series:
     return s.ewm(span=span, adjust=False).mean()
 
 
+
+
+
 def atr(candles_df: pd.DataFrame, window: int = 14) -> pd.Series:
     """Average True Range: rolling mean of max(H-L, |H-prevC|, |L-prevC|)."""
     prev_close = candles_df["close"].shift(1)
@@ -50,3 +53,44 @@ def zscore(s: pd.Series, window: int) -> pd.Series:
     """Rolling z-score: (x - rolling mean) / rolling std."""
     roll = s.rolling(window)
     return (s - roll.mean()) / roll.std()
+
+
+# ---------------------------------------------------------------------------
+# "last value" helpers in plain numpy: competitors call them once per symbol
+# per bar, where pandas' per-call overhead (not the data size) dominates.
+
+
+def last_ema(s: pd.Series, span: int) -> float:
+    """Last EMA value (alpha = 2/(span+1)), from the trailing ``10*span`` closes.
+
+    Equals ``ema(s, span).iloc[-1]`` up to the truncated warm-up (<1e-9 relative
+    for 10 spans); with adjust=False the first value seeds the recursion.
+    """
+    x = np.asarray(s.to_numpy(dtype=float)[-span * 10 :])
+    alpha = 2.0 / (span + 1)
+    n = len(x)
+    if n == 0:
+        return float("nan")
+    w = (1 - alpha) ** np.arange(n - 1, -1, -1)  # oldest gets highest power
+    w[1:] *= alpha  # seed keeps full weight (1-alpha)^(n-1), the rest alpha(1-alpha)^k
+    return float(np.dot(w, x))
+
+
+def last_atr(candles_df: pd.DataFrame, window: int = 14) -> float:
+    """Last ATR value (rolling mean of the true range over ``window`` bars)."""
+    tail = candles_df.iloc[-(window + 1) :]
+    h, l, c = (tail[k].to_numpy(dtype=float) for k in ("high", "low", "close"))
+    if len(c) < window + 1:
+        return float("nan")
+    prev = c[:-1]
+    tr = np.maximum.reduce([h[1:] - l[1:], np.abs(h[1:] - prev), np.abs(l[1:] - prev)])
+    return float(tr.mean())
+
+
+def last_realised_vol(closes: pd.Series, window: int, bars_per_year: int = 8760) -> float:
+    """Last annualised realised volatility over ``window`` log returns (ddof=1, as pandas)."""
+    x = closes.to_numpy(dtype=float)[-(window + 1) :]
+    if len(x) < window + 1:
+        return float("nan")
+    r = np.diff(np.log(x))
+    return float(r.std(ddof=1) * np.sqrt(bars_per_year))

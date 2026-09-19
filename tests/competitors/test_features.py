@@ -42,3 +42,19 @@ def test_zscore_last_value():
     s = pd.Series([1.0, 2.0, 3.0, 4.0, 10.0])
     z = zscore(s, 5)
     assert z.iloc[-1] == pytest.approx((10 - s.mean()) / s.std())
+
+
+def test_last_helpers_match_pandas_versions():
+    import numpy as np
+    import pandas as pd
+
+    from arena.competitors.features import atr, ema, last_atr, last_ema, last_realised_vol, realised_vol
+
+    rng = np.random.default_rng(0)
+    idx = pd.date_range("2024-01-01", periods=3000, freq="1h", tz="UTC")
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 3000))), index=idx)
+    df = pd.DataFrame({"close": close, "high": close * 1.004, "low": close * 0.996})
+    assert last_ema(close, 50) == pytest.approx(float(ema(close, 50).iloc[-1]), rel=1e-9)
+    assert last_ema(close, 200) == pytest.approx(float(ema(close, 200).iloc[-1]), rel=1e-6)
+    assert last_atr(df, 14) == pytest.approx(float(atr(df, 14).iloc[-1]), rel=1e-12)
+    assert last_realised_vol(close, 720) == pytest.approx(float(realised_vol(close, 720).iloc[-1]), rel=1e-12)
