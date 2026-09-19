@@ -39,7 +39,7 @@ jobs:
           curl -LsSf https://astral.sh/uv/0.8.13/install.sh | sh  # pinned installer
           export PATH="$HOME/.local/bin:$PATH"
           uv python install 3.12
-          uv sync --frozen --extra dev
+          uv sync --frozen --extra dev --extra web
           uv run ruff check arena tests
           uv run ruff format --check arena tests
           uv run pytest -q

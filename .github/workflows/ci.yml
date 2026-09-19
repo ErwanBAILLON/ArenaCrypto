@@ -36,7 +36,7 @@ jobs:
       - name: Install Python and dependencies
         run: |
           uv python install 3.12
-          uv sync --frozen --extra dev
+          uv sync --frozen --extra dev --extra web
 
       - name: Lint
         run: |
