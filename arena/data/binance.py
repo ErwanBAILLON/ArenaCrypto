@@ -7,7 +7,7 @@ tz-aware pandas Timestamps.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pandas as pd
@@ -27,9 +27,7 @@ def _utc(ms: pd.Series | list[int]) -> pd.Series:
 
 def _empty(columns: list[str]) -> pd.DataFrame:
     """Typed empty frame: tz-aware `ts`, float64 for everything else."""
-    return pd.DataFrame({
-        c: pd.Series(dtype="datetime64[ns, UTC]" if c == "ts" else "float64") for c in columns
-    })
+    return pd.DataFrame({c: pd.Series(dtype="datetime64[ns, UTC]" if c == "ts" else "float64") for c in columns})
 
 
 def klines(
@@ -46,7 +44,7 @@ def klines(
     so the candle labelled 13:00 covers 12:00–13:00. Candles whose close_time is
     not strictly before `now` (the still-forming bar) are dropped.
     """
-    now_ms = int((now or datetime.now(timezone.utc)).timestamp() * 1000)
+    now_ms = int((now or datetime.now(UTC)).timestamp() * 1000)
     step = INTERVAL_MS[interval]
     rows: list[list] = []
     cursor = start_ms
@@ -93,10 +91,12 @@ def funding(client: httpx.Client, symbol: str, start_ms: int, end_ms: int | None
             break
     if not rows:
         return _empty(["ts", "rate"])
-    out = pd.DataFrame({
-        "ts": _utc([int(r["fundingTime"]) for r in rows]),
-        "rate": [float(r["fundingRate"]) for r in rows],
-    })
+    out = pd.DataFrame(
+        {
+            "ts": _utc([int(r["fundingTime"]) for r in rows]),
+            "rate": [float(r["fundingRate"]) for r in rows],
+        }
+    )
     return out.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
 
 
@@ -109,8 +109,10 @@ def open_interest_hist(client: httpx.Client, symbol: str, period: str = "1h", li
     )
     if not page:
         return _empty(["ts", "oi"])
-    out = pd.DataFrame({
-        "ts": _utc([int(r["timestamp"]) for r in page]),
-        "oi": [float(r["sumOpenInterest"]) for r in page],
-    })
+    out = pd.DataFrame(
+        {
+            "ts": _utc([int(r["timestamp"]) for r in page]),
+            "oi": [float(r["sumOpenInterest"]) for r in page],
+        }
+    )
     return out.sort_values("ts").reset_index(drop=True)

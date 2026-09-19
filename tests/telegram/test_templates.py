@@ -2,8 +2,7 @@ from arena.telegram.templates import MAX_LEN, daily_digest, event_alert, signal_
 
 
 def test_signal_long_wording():
-    s = signal_alert("trend_ts v3", "ETH", 0.35, 0.71, "perp", "bull_vol", 0.00012,
-                     {"ema50>ema200": True, "r30": 0.18})
+    s = signal_alert("trend_ts v3", "ETH", 0.35, 0.71, "perp", "bull_vol", 0.00012, {"ema50>ema200": True, "r30": 0.18})
     assert s.startswith("⚔️ trend_ts v3 → LONG ETH 0.35 (conv 0.71)")
     assert "regime bull_vol" in s
     assert "fund +0.012%/8h" in s
@@ -36,15 +35,39 @@ def test_reason_truncated_to_six_pairs_and_3_sig_digits():
 
 def _digest():
     lb = [
-        {"name": "trend_ts", "status": "champion", "role": "competitor", "sharpe_30d": 1.52,
-         "ret_30d": 0.081, "mdd_30d": -0.042, "nav": 10810.0},
-        {"name": "xs_mom", "status": "challenger", "role": "competitor", "sharpe_30d": -0.3,
-         "ret_30d": -0.012, "mdd_30d": -0.09, "nav": 9880.0},
-        {"name": "null_random", "status": "champion", "role": "null", "sharpe_30d": 0.1,
-         "ret_30d": 0.0, "mdd_30d": -0.05, "nav": 10000.0},
+        {
+            "name": "trend_ts",
+            "status": "champion",
+            "role": "competitor",
+            "sharpe_30d": 1.52,
+            "ret_30d": 0.081,
+            "mdd_30d": -0.042,
+            "nav": 10810.0,
+        },
+        {
+            "name": "xs_mom",
+            "status": "challenger",
+            "role": "competitor",
+            "sharpe_30d": -0.3,
+            "ret_30d": -0.012,
+            "mdd_30d": -0.09,
+            "nav": 9880.0,
+        },
+        {
+            "name": "null_random",
+            "status": "champion",
+            "role": "null",
+            "sharpe_30d": 0.1,
+            "ret_30d": 0.0,
+            "mdd_30d": -0.05,
+            "nav": 10000.0,
+        },
     ]
     return daily_digest(
-        "2026-09-19", lb, [("trend_ts", 0.7), ("carry", 0.3)], 1.23,
+        "2026-09-19",
+        lb,
+        [("trend_ts", 0.7), ("carry", 0.3)],
+        1.23,
         [{"name": "xs_mom", "days_in_arena": 31, "decisions": 58}],
         ["trend_ts: live Sharpe 0.4 vs backtest 1.8"],
     )
@@ -52,8 +75,14 @@ def _digest():
 
 def test_digest_sections_present():
     d = _digest()
-    for section in ("📊 Arena digest 2026-09-19", "Leaderboard (30d)", "Allocator opinion",
-                    "Null 95th pct Sharpe: 1.23", "Challengers", "Drift"):
+    for section in (
+        "📊 Arena digest 2026-09-19",
+        "Leaderboard (30d)",
+        "Allocator opinion",
+        "Null 95th pct Sharpe: 1.23",
+        "Challengers",
+        "Drift",
+    ):
         assert section in d
     assert "🏆 trend_ts" in d
     assert "🧪 xs_mom" in d

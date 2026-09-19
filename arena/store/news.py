@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 
 import pandas as pd
 import psycopg
@@ -100,7 +100,7 @@ def upsert_macro_events(conn: psycopg.Connection, df: pd.DataFrame) -> int:
     ts = pd.to_datetime(df["ts"], utc=True).dt.to_pydatetime()
     rows = [
         (t, str(c), str(title), str(impact))
-        for t, c, title, impact in zip(ts, df["currency"], df["title"], df["impact"])
+        for t, c, title, impact in zip(ts, df["currency"], df["title"], df["impact"], strict=True)
     ]
     with conn.cursor() as cur:
         cur.executemany(
@@ -114,9 +114,7 @@ def upsert_macro_events(conn: psycopg.Connection, df: pd.DataFrame) -> int:
 def macro_event_times(conn: psycopg.Connection, start: datetime, end: datetime) -> pd.DatetimeIndex:
     """Distinct macro event timestamps within ``[start, end]`` as a tz-aware UTC index."""
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT DISTINCT ts FROM macro_events WHERE ts BETWEEN %s AND %s ORDER BY ts", (start, end)
-        )
+        cur.execute("SELECT DISTINCT ts FROM macro_events WHERE ts BETWEEN %s AND %s ORDER BY ts", (start, end))
         times = [r["ts"] for r in cur.fetchall()]
     return pd.DatetimeIndex(pd.to_datetime(times, utc=True))
 

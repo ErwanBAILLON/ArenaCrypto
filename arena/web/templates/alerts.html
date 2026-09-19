@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Arena · Alerts{% endblock %}
+{% block content %}
+<h2>Last {{ alerts|length }} alerts</h2>
+<div class="card">
+<table>
+  <thead><tr><th>ts</th><th>kind</th><th>competitor</th><th>symbol</th><th>detail</th><th>sent</th></tr></thead>
+  <tbody>
+  {% for a in alerts %}
+  <tr><td>{{ a.ts|iso }}</td><td><span class="pill">{{ a.kind }}</span></td>
+      <td>{% if a.competitor_id %}<a href="/competitors/{{ a.competitor_id }}">{{ a.competitor }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{{ a.symbol or '' }}</td><td>{{ a.detail }}</td>
+      <td class="muted">{{ a.sent_at|iso if a.sent_at else 'queued' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">none</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

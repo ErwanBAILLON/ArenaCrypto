@@ -81,18 +81,24 @@ def _wide_funding(funding: pd.DataFrame | None, bars: pd.DatetimeIndex, symbols:
     fts = fts.tz_localize("UTC") if fts.tz is None else fts.tz_convert("UTC")
     pos = bars.searchsorted(fts, side="left")
     keep = pos < len(bars)
-    acc = pd.DataFrame({
-        "i": pos[keep],
-        "symbol": f["symbol"].to_numpy()[keep],
-        "rate": f["rate"].to_numpy(dtype=float)[keep],
-    }).groupby(["i", "symbol"])["rate"].sum()
+    acc = (
+        pd.DataFrame(
+            {
+                "i": pos[keep],
+                "symbol": f["symbol"].to_numpy()[keep],
+                "rate": f["rate"].to_numpy(dtype=float)[keep],
+            }
+        )
+        .groupby(["i", "symbol"])["rate"]
+        .sum()
+    )
     for (i, sym), rate in acc.items():
         out.iat[int(i), out.columns.get_loc(sym)] += rate
     return out
 
 
 def _row_dict(cols: list[str], values: np.ndarray) -> dict[str, float]:
-    return {s: float(v) for s, v in zip(cols, values) if not np.isnan(v)}
+    return {s: float(v) for s, v in zip(cols, values, strict=True) if not np.isnan(v)}
 
 
 def _has_targets(decision: Decision) -> bool:
@@ -128,8 +134,13 @@ def run(
     ref_i = cols.index(ref) if ref is not None else None
 
     full = Snapshot.from_long(
-        end_ts, symbols, history.candles, history.funding, history.open_interest,
-        news=history.news, macro_events=history.macro_events,
+        end_ts,
+        symbols,
+        history.candles,
+        history.funding,
+        history.open_interest,
+        news=history.news,
+        macro_events=history.macro_events,
     )
     warm = int(competitor.warmup_bars())
     book = Book(nav=nav0, fees=fees)
@@ -149,13 +160,16 @@ def run(
             decisions += 1
         prices = _row_dict(cols, close_arr[i])
         prev_prices = _row_dict(cols, close_arr[i - 1]) if i > 0 else {}
-        funding = {s: float(v) for s, v in zip(cols, fund_arr[i]) if v != 0.0}
+        funding = {s: float(v) for s, v in zip(cols, fund_arr[i], strict=True) if v != 0.0}
         rows.append(book.step(ts.to_pydatetime(), prices, prev_prices, funding, decision))
 
     idx = pd.DatetimeIndex([r.ts for r in rows], tz="UTC", name="ts")
     returns = pd.Series([r.ret for r in rows], index=idx, dtype=float, name="ret")
     nav = pd.Series([r.nav for r in rows], index=idx, dtype=float, name="nav")
     return BacktestResult(
-        returns=returns, nav=nav, rows=rows, decisions=decisions,
+        returns=returns,
+        nav=nav,
+        rows=rows,
+        decisions=decisions,
         turnover=float(sum(r.turnover for r in rows)),
     )

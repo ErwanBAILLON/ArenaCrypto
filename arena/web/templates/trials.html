@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Arena · Trials{% endblock %}
+{% block content %}
+<h2>Last {{ trials|length }} trials</h2>
+<div class="card">
+<table>
+  <thead><tr><th>started</th><th>family</th><th>kind</th><th>verdict</th><th class="n">sharpe</th><th class="n">dsr</th><th class="n">p</th><th class="n">mdd</th><th>fold sharpes</th><th>competitor</th></tr></thead>
+  <tbody>
+  {% for t in trials %}
+  <tr><td>{{ t.started_at|iso }}</td><td>{{ t.family }}</td><td>{{ t.kind }}</td>
+      <td>{% if t.verdict %}<span class="pill {{ t.verdict }}">{{ t.verdict }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="n">{{ t.highlights.sharpe|num }}</td><td class="n">{{ t.highlights.dsr|num }}</td>
+      <td class="n">{{ t.highlights.bootstrap_p|num }}</td><td class="n">{{ t.highlights.max_drawdown|pct }}</td>
+      <td><code>{{ t.highlights.fold_sharpes|num if t.highlights.fold_sharpes is not none else '' }}</code></td>
+      <td>{% if t.competitor_id %}<a href="/competitors/{{ t.competitor_id }}">#{{ t.competitor_id }}</a>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="10" class="muted">none</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

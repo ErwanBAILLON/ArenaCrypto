@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
@@ -7,7 +7,7 @@ from arena.core.types import CompetitorSpec
 from arena.runner import drift
 from arena.runner.promotion import Candidate, should_promote, surplus_challengers
 
-NOW = datetime(2024, 6, 1, tzinfo=timezone.utc)
+NOW = datetime(2024, 6, 1, tzinfo=UTC)
 
 
 def _spec(i, family="trend_ts", status="challenger", role="competitor"):
@@ -21,8 +21,8 @@ def _series(mu, n=24 * 50, seed=0, start="2024-04-01"):
 
 
 def test_stale_detection():
-    assert drift.stale_data(datetime(2024, 5, 31, 20, tzinfo=timezone.utc), NOW) is not None
-    assert drift.stale_data(datetime(2024, 5, 31, 23, tzinfo=timezone.utc), NOW) is None
+    assert drift.stale_data(datetime(2024, 5, 31, 20, tzinfo=UTC), NOW) is not None
+    assert drift.stale_data(datetime(2024, 5, 31, 23, tzinfo=UTC), NOW) is None
     assert drift.stale_data(None, NOW).kind == "stale"
 
 
@@ -47,12 +47,12 @@ def _nulls():
 
 
 def test_promotion_requires_age_and_edge():
-    start = datetime(2024, 4, 1, tzinfo=timezone.utc)
+    start = datetime(2024, 4, 1, tzinfo=UTC)
     strong = Candidate(_spec(2), start, 50, _series(0.0008))
     weak_champion = Candidate(_spec(1, status="champion"), start, 300, _series(0.0, seed=3))
     ok, ev = should_promote(strong, weak_champion, _nulls(), NOW)
     assert ok and ev["challenger_sharpe"] > ev["champion_sharpe"]
-    young = Candidate(_spec(3), datetime(2024, 5, 25, tzinfo=timezone.utc), 10, _series(0.0008, start="2024-05-25", n=24 * 6))
+    young = Candidate(_spec(3), datetime(2024, 5, 25, tzinfo=UTC), 10, _series(0.0008, start="2024-05-25", n=24 * 6))
     assert should_promote(young, weak_champion, _nulls(), NOW) == (False, {"reason": "not_ready"})
     noise = Candidate(_spec(4), start, 200, _series(0.0, seed=5))
     ok, ev = should_promote(noise, weak_champion, _nulls(), NOW)

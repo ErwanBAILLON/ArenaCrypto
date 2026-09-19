@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 
 import pandas as pd
 import psycopg
@@ -34,9 +34,7 @@ def write_targets(conn: psycopg.Connection, competitor_id: int, ts: datetime, de
         )
 
 
-def last_targets(
-    conn: psycopg.Connection, competitor_id: int
-) -> tuple[datetime, dict[str, tuple[str, float]]] | None:
+def last_targets(conn: psycopg.Connection, competitor_id: int) -> tuple[datetime, dict[str, tuple[str, float]]] | None:
     """Latest target timestamp and ``symbol -> (kind, weight)`` for a competitor, or None."""
     with conn.cursor() as cur:
         cur.execute(
@@ -120,9 +118,7 @@ def write_allocations(conn: psycopg.Connection, ts: datetime, weights: dict[int,
 def last_allocations(conn: psycopg.Connection) -> dict[int, float]:
     """``competitor_id -> weight`` at the latest allocation timestamp (empty if none)."""
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT competitor_id, weight FROM allocations WHERE ts = (SELECT max(ts) FROM allocations)"
-        )
+        cur.execute("SELECT competitor_id, weight FROM allocations WHERE ts = (SELECT max(ts) FROM allocations)")
         return {int(r["competitor_id"]): float(r["weight"]) for r in cur.fetchall()}
 
 

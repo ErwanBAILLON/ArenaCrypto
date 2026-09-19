@@ -1,6 +1,6 @@
 image:
   repository: git.ebaillon.fr/bots/arena
-  tag: "0.1.3"
+  tag: "0.2.0"
   pullPolicy: IfNotPresent
 
 # Namespace already exists (PSA restricted, default-deny, allow-dns,
@@ -42,3 +42,16 @@ bootstrap:
 
 networkPolicy:
   postgresNamespace: database
+
+# Read-only dashboard (arena web). Auth is not in the app: enable basicAuth and
+# create the htpasswd Secret (key `users`) in the namespace, or rely on Traefik/CrowdSec.
+web:
+  enabled: true
+  host: arena.ebaillon.fr
+  traefikNamespace: network
+  basicAuth:
+    enabled: true
+    secretName: arena-secrets   # key 'users' (htpasswd) projected from Vault secret/arena
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 384Mi }

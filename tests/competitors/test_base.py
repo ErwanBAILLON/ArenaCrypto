@@ -5,8 +5,16 @@ from arena.competitors.base import REGISTRY, build, cap_gross
 from arena.competitors.carry import Carry
 from arena.core.types import CompetitorSpec, Target
 
-FAMILIES = {"null_cash", "null_random", "bench_btc_hold", "bench_carry_equal",
-            "carry", "trend_ts", "xs_momentum", "regime"}
+FAMILIES = {
+    "null_cash",
+    "null_random",
+    "bench_btc_hold",
+    "bench_carry_equal",
+    "carry",
+    "trend_ts",
+    "xs_momentum",
+    "regime",
+}
 
 
 def test_registry_has_all_founding_families():

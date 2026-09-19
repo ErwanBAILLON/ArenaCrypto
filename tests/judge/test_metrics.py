@@ -61,7 +61,7 @@ def test_deflated_sharpe_single_trial_is_psr():
 
 def test_deflated_sharpe_monotone_in_trials():
     vals = [m.deflated_sharpe(0.03, n, 5000) for n in (1, 2, 10, 100, 1000)]
-    assert all(a > b for a, b in zip(vals, vals[1:]))
+    assert all(a > b for a, b in zip(vals, vals[1:], strict=False))
     assert all(0.0 <= v <= 1.0 for v in vals)
 
 

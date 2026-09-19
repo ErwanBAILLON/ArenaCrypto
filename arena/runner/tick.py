@@ -68,7 +68,15 @@ def _with_model(conn: psycopg.Connection, spec: CompetitorSpec) -> CompetitorSpe
     return CompetitorSpec(**{**spec.__dict__, "params": {**spec.params, "model_str": artifact.decode()}})
 
 
-def _signal_alerts(conn, spec: CompetitorSpec, prev: dict[str, tuple[str, float]], decision: Decision, ts, regime: str, funding_8h: dict[str, float]) -> list[Alert]:
+def _signal_alerts(
+    conn,
+    spec: CompetitorSpec,
+    prev: dict[str, tuple[str, float]],
+    decision: Decision,
+    ts,
+    regime: str,
+    funding_8h: dict[str, float],
+) -> list[Alert]:
     if spec.role != "competitor" or spec.status != "champion":
         return []
     out: list[Alert] = []
@@ -81,14 +89,32 @@ def _signal_alerts(conn, spec: CompetitorSpec, prev: dict[str, tuple[str, float]
             continue
         if bstore.recent_alert_exists(conn, "signal", spec.id, sym, ts - SIGNAL_COOLDOWN):
             continue
-        out.append(Alert(kind="signal", competitor_id=spec.id, symbol=sym, payload={
-            "weight": w_new, "conviction": t.conviction if t else 0.0, "kind": t.kind if t else "perp",
-            "regime": regime, "funding_8h": funding_8h.get(sym), "reason": t.reason if t else {"exit": True},
-        }))
+        out.append(
+            Alert(
+                kind="signal",
+                competitor_id=spec.id,
+                symbol=sym,
+                payload={
+                    "weight": w_new,
+                    "conviction": t.conviction if t else 0.0,
+                    "kind": t.kind if t else "perp",
+                    "regime": regime,
+                    "funding_8h": funding_8h.get(sym),
+                    "reason": t.reason if t else {"exit": True},
+                },
+            )
+        )
     return out
 
 
-def run(conn: psycopg.Connection, settings: Settings, universe: Universe, now: datetime, client: httpx.Client | None = None, ingest: bool = True) -> TickReport:
+def run(
+    conn: psycopg.Connection,
+    settings: Settings,
+    universe: Universe,
+    now: datetime,
+    client: httpx.Client | None = None,
+    ingest: bool = True,
+) -> TickReport:
     rep = TickReport()
     if ingest and client is not None:
         rep.ingested = ingest_market(conn, client, universe, now)
@@ -122,7 +148,14 @@ def run(conn: psycopg.Connection, settings: Settings, universe: Universe, now: d
             conn.rollback()
             log.exception("competitor %s failed", spec.name)
             rep.failed.append(spec.name)
-            bstore.add_alert(conn, Alert(kind="error", competitor_id=spec.id, payload={"detail": f"{spec.name}: {type(exc).__name__}: {exc}"[:300]}))
+            bstore.add_alert(
+                conn,
+                Alert(
+                    kind="error",
+                    competitor_id=spec.id,
+                    payload={"detail": f"{spec.name}: {type(exc).__name__}: {exc}"[:300]},
+                ),
+            )
             conn.commit()
 
     _allocate(conn, specs, ts)
@@ -148,7 +181,9 @@ def _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fee
     else:
         book = Book.restore(last_row.nav, prev_positions, fees)
         prev_ts = pd.Timestamp(last_row.ts)
-        prev_prices = {s: float(closes[s].loc[:prev_ts].iloc[-1]) for s in closes.columns if len(closes[s].loc[:prev_ts])}
+        prev_prices = {
+            s: float(closes[s].loc[:prev_ts].iloc[-1]) for s in closes.columns if len(closes[s].loc[:prev_ts])
+        }
         funding = {}
         if history.funding is not None and not history.funding.empty:
             f = history.funding[(history.funding["ts"] > prev_ts) & (history.funding["ts"] <= ts)]
@@ -177,12 +212,14 @@ def _allocate(conn, specs: list[CompetitorSpec], ts) -> None:
 
 def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now) -> None:
     nulls = [s for s in specs if s.role == "null" and s.family == "null_random"]
-    null_rets = bstore.read_returns(conn, [s.id for s in nulls], ts - timedelta(days=365), ts) if nulls else pd.DataFrame()
+    null_rets = (
+        bstore.read_returns(conn, [s.id for s in nulls], ts - timedelta(days=365), ts) if nulls else pd.DataFrame()
+    )
     by_family: dict[str, dict[str, list[CompetitorSpec]]] = {}
     for s in specs:
         if s.role == "competitor":
             by_family.setdefault(s.family, {"champion": [], "challenger": []})[s.status].append(s)
-    for fam, groups in by_family.items():
+    for groups in by_family.values():
         champion = groups["champion"][0] if groups["champion"] else None
         champ_cand = _candidate(conn, champion, ts) if champion else None
         if champ_cand is not None:
@@ -198,7 +235,12 @@ def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now) -> None:
                 if champion is not None:
                     registry.set_status(conn, champion.id, "retired")
                 registry.set_status(conn, ch.id, "champion")
-                bstore.add_alert(conn, promotion.promotion_alert(ch, champion, {k: round(v, 3) if isinstance(v, float) else v for k, v in evidence.items()}))
+                bstore.add_alert(
+                    conn,
+                    promotion.promotion_alert(
+                        ch, champion, {k: round(v, 3) if isinstance(v, float) else v for k, v in evidence.items()}
+                    ),
+                )
                 champion, champ_cand = ch, cand
         for s in promotion.surplus_challengers(groups["challenger"]):
             registry.set_status(conn, s.id, "retired")
@@ -231,7 +273,9 @@ def _first_book_ts(conn, competitor_id: int):
 
 def _decision_count(conn, competitor_id: int) -> int:
     with conn.cursor() as cur:
-        cur.execute("SELECT count(DISTINCT ts) AS n FROM targets WHERE competitor_id = %s AND weight <> 0", (competitor_id,))
+        cur.execute(
+            "SELECT count(DISTINCT ts) AS n FROM targets WHERE competitor_id = %s AND weight <> 0", (competitor_id,)
+        )
         return int(cur.fetchone()["n"])
 
 

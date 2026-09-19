@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -6,18 +6,30 @@ import pytest
 from arena.core.types import Article, ArticleScore
 from arena.store import news as repo
 
-T0 = datetime(2024, 3, 1, 12, tzinfo=timezone.utc)
+T0 = datetime(2024, 3, 1, 12, tzinfo=UTC)
 V = 1
 
 
 def art(title: str, published_at: datetime, source: str = "feed", url: str | None = None) -> Article:
-    return Article(source=source, url=url or f"https://x/{title}", title=title, summary="",
-                   published_at=published_at, fetched_at=published_at)
+    return Article(
+        source=source,
+        url=url or f"https://x/{title}",
+        title=title,
+        summary="",
+        published_at=published_at,
+        fetched_at=published_at,
+    )
 
 
 def score(article_id: int, asset: str, sentiment: float, intensity: float = 0.3, version: int = V) -> ArticleScore:
-    return ArticleScore(article_id=article_id, asset=asset, sentiment=sentiment, event_type="other",
-                        intensity=intensity, scorer_version=version)
+    return ArticleScore(
+        article_id=article_id,
+        asset=asset,
+        sentiment=sentiment,
+        event_type="other",
+        intensity=intensity,
+        scorer_version=version,
+    )
 
 
 def test_upsert_articles_returns_only_new_ids(conn):
@@ -46,10 +58,14 @@ def test_unscored_articles_and_upsert_scores(conn):
 
 
 def test_macro_events_round_trip(conn):
-    df = pd.DataFrame({
-        "ts": [T0, T0 + timedelta(days=1)], "currency": ["USD", "USD"],
-        "title": ["CPI", "FOMC"], "impact": ["high", "high"],
-    })
+    df = pd.DataFrame(
+        {
+            "ts": [T0, T0 + timedelta(days=1)],
+            "currency": ["USD", "USD"],
+            "title": ["CPI", "FOMC"],
+            "impact": ["high", "high"],
+        }
+    )
     assert repo.upsert_macro_events(conn, df) == 2
     assert repo.upsert_macro_events(conn, df) == 0
     idx = repo.macro_event_times(conn, T0, T0 + timedelta(hours=1))
@@ -61,17 +77,23 @@ def test_macro_events_round_trip(conn):
 @pytest.fixture
 def seeded(conn):
     """Three scored articles: BTC at T0-2h (0.8, shock), BTC at T0-30h (-0.4), MARKET at T0-1h (0.2)."""
-    ids = repo.upsert_articles(conn, [
-        art("btc recent", T0 - timedelta(hours=2)),
-        art("btc old", T0 - timedelta(hours=30)),
-        art("market", T0 - timedelta(hours=1)),
-    ])
-    repo.upsert_scores(conn, [
-        score(ids[0], "BTC", 0.8, intensity=0.9),
-        score(ids[1], "BTC", -0.4, intensity=0.2),
-        score(ids[2], "MARKET", 0.2, intensity=0.1),
-        score(ids[0], "BTC", 0.0, intensity=0.0, version=V + 1),  # other version must be ignored
-    ])
+    ids = repo.upsert_articles(
+        conn,
+        [
+            art("btc recent", T0 - timedelta(hours=2)),
+            art("btc old", T0 - timedelta(hours=30)),
+            art("market", T0 - timedelta(hours=1)),
+        ],
+    )
+    repo.upsert_scores(
+        conn,
+        [
+            score(ids[0], "BTC", 0.8, intensity=0.9),
+            score(ids[1], "BTC", -0.4, intensity=0.2),
+            score(ids[2], "MARKET", 0.2, intensity=0.1),
+            score(ids[0], "BTC", 0.0, intensity=0.0, version=V + 1),  # other version must be ignored
+        ],
+    )
     return ids
 
 

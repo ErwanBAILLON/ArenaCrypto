@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
@@ -6,7 +6,7 @@ from arena.store import candles as repo
 from tests.conftest import make_candles, make_funding
 
 EX = "binance"
-T0 = datetime(2024, 1, 1, 1, tzinfo=timezone.utc)
+T0 = datetime(2024, 1, 1, 1, tzinfo=UTC)
 
 
 def test_upsert_candles_idempotent_and_round_trip(conn):

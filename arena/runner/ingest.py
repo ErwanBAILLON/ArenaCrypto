@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pandas as pd
@@ -24,7 +24,9 @@ def _ms(ts: datetime) -> int:
     return int(pd.Timestamp(ts).timestamp() * 1000)
 
 
-def ingest_market(conn: psycopg.Connection, client: httpx.Client, universe: Universe, now: datetime, since: datetime | None = None) -> dict[str, int]:
+def ingest_market(
+    conn: psycopg.Connection, client: httpx.Client, universe: Universe, now: datetime, since: datetime | None = None
+) -> dict[str, int]:
     """Candles, funding and open interest for every symbol, from the last stored bar (or ``since``)."""
     counts = {"candles": 0, "funding": 0, "oi": 0}
     for sym in universe.symbols:
@@ -61,7 +63,9 @@ def ingest_market(conn: psycopg.Connection, client: httpx.Client, universe: Univ
     return counts
 
 
-def ingest_news(conn: psycopg.Connection, client: httpx.Client, now: datetime, scorer: VaderScorer | None = None) -> dict[str, int]:
+def ingest_news(
+    conn: psycopg.Connection, client: httpx.Client, now: datetime, scorer: VaderScorer | None = None
+) -> dict[str, int]:
     """Fetch every RSS feed, store new articles point-in-time, score whatever is unscored."""
     scorer = scorer or VaderScorer()
     articles = rss.fetch_all(client, now)
@@ -81,4 +85,4 @@ def ingest_macro(conn: psycopg.Connection, client: httpx.Client, now: datetime) 
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)

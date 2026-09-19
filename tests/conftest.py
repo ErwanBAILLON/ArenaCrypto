@@ -13,8 +13,13 @@ from arena.core.snapshot import Snapshot
 SYMBOLS = ["BTC", "ETH", "SOL"]
 
 
-def make_candles(symbols=SYMBOLS, bars: int = 24 * 400, seed: int = 0, drift: dict[str, float] | None = None,
-                 start: str = "2024-01-01T01:00:00Z") -> pd.DataFrame:
+def make_candles(
+    symbols=SYMBOLS,
+    bars: int = 24 * 400,
+    seed: int = 0,
+    drift: dict[str, float] | None = None,
+    start: str = "2024-01-01T01:00:00Z",
+) -> pd.DataFrame:
     """Long-format synthetic 1h candles (random walk, optional per-symbol drift per bar)."""
     rng = np.random.default_rng(seed)
     idx = pd.date_range(start, periods=bars, freq="1h", tz="UTC")
@@ -26,17 +31,33 @@ def make_candles(symbols=SYMBOLS, bars: int = 24 * 400, seed: int = 0, drift: di
         open_ = np.concatenate([[close[0]], close[:-1]])
         high = np.maximum(open_, close) * (1 + rng.uniform(0, 0.005, bars))
         low = np.minimum(open_, close) * (1 - rng.uniform(0, 0.005, bars))
-        frames.append(pd.DataFrame({
-            "symbol": sym, "ts": idx, "open": open_, "high": high, "low": low,
-            "close": close, "volume": rng.uniform(1e5, 1e6, bars),
-        }))
+        frames.append(
+            pd.DataFrame(
+                {
+                    "symbol": sym,
+                    "ts": idx,
+                    "open": open_,
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "volume": rng.uniform(1e5, 1e6, bars),
+                }
+            )
+        )
     return pd.concat(frames, ignore_index=True)
 
 
-def make_funding(symbols=SYMBOLS, candles: pd.DataFrame | None = None, rate: float = 0.0001,
-                 per_symbol: dict[str, float] | None = None) -> pd.DataFrame:
-    ts = pd.DatetimeIndex(sorted(candles["ts"].unique())) if candles is not None else pd.date_range(
-        "2024-01-01", periods=1200, freq="8h", tz="UTC")
+def make_funding(
+    symbols=SYMBOLS,
+    candles: pd.DataFrame | None = None,
+    rate: float = 0.0001,
+    per_symbol: dict[str, float] | None = None,
+) -> pd.DataFrame:
+    ts = (
+        pd.DatetimeIndex(sorted(candles["ts"].unique()))
+        if candles is not None
+        else pd.date_range("2024-01-01", periods=1200, freq="8h", tz="UTC")
+    )
     ts8 = ts[ts.hour % 8 == 0]
     rows = []
     for sym in symbols:

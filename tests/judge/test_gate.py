@@ -24,7 +24,7 @@ class NoiseTrader:
     def decide(self, snap):
         w = self.rng.normal(size=len(snap.symbols))
         w = w / np.abs(w).sum()
-        return {s: Target(weight=float(x)) for s, x in zip(snap.symbols, w)}
+        return {s: Target(weight=float(x)) for s, x in zip(snap.symbols, w, strict=True)}
 
 
 class DriftFollower:
@@ -83,8 +83,12 @@ def _result(r: pd.Series, decisions: int) -> BacktestResult:
 
 
 def test_evaluate_edge_cases():
-    fold = Fold(pd.Timestamp("2024-01-01", tz="UTC"), pd.Timestamp("2024-07-01", tz="UTC"),
-                pd.Timestamp("2024-07-01", tz="UTC"), pd.Timestamp("2024-10-01", tz="UTC"))
+    fold = Fold(
+        pd.Timestamp("2024-01-01", tz="UTC"),
+        pd.Timestamp("2024-07-01", tz="UTC"),
+        pd.Timestamp("2024-07-01", tz="UTC"),
+        pd.Timestamp("2024-10-01", tz="UTC"),
+    )
     idx = pd.date_range("2024-07-01", periods=500, freq="1h", tz="UTC")
     good = _result(pd.Series(np.random.default_rng(0).normal(0.002, 0.005, 500), index=idx), decisions=5)
     v = evaluate([(fold, good)], null_threshold=0.0, n_trials=1)
@@ -121,8 +125,9 @@ def test_null_distribution_parallel_matches_serial():
 
     c = make_candles(["BTC"], bars=24 * 40)
     h = HistoryFrames(candles=c)
-    end = c["ts"].max(); start = end - pd.Timedelta(days=10)
+    end = c["ts"].max()
+    start = end - pd.Timedelta(days=10)
     serial = run_null_distribution(Coin, h, ["BTC"], start, end, FeeModel(), n=4, workers=1)
     parallel = run_null_distribution(Coin, h, ["BTC"], start, end, FeeModel(), n=4, workers=2)
-    for a, b in zip(serial, parallel):
+    for a, b in zip(serial, parallel, strict=True):
         pd.testing.assert_series_equal(a.returns, b.returns)

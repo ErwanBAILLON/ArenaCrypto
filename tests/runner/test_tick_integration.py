@@ -2,7 +2,6 @@
 
 from datetime import timedelta
 
-import pandas as pd
 import pytest
 
 from arena.core.types import CompetitorSpec
@@ -33,7 +32,9 @@ def seeded(conn, tmp_path):
         registry.insert_competitor(conn, spec)
     conn.commit()
     uni_path = tmp_path / "universe.yaml"
-    uni_path.write_text("symbols: [BTC, ETH, SOL]\nbinance_suffix: USDT\nfees: {perp_taker: 0.0005, slippage: 0.0002, spot_taker: 0.001}\nnav0: 10000\nhistory_start: '2024-01-01T00:00:00Z'\n")
+    uni_path.write_text(
+        "symbols: [BTC, ETH, SOL]\nbinance_suffix: USDT\nfees: {perp_taker: 0.0005, slippage: 0.0002, spot_taker: 0.001}\nnav0: 10000\nhistory_start: '2024-01-01T00:00:00Z'\n"
+    )
     return conn, load_universe(uni_path), c["ts"].max()
 
 

@@ -24,8 +24,17 @@ from arena.core.types import Decision, Target
 
 REGIMES = ["bull_calm", "bull_vol", "bear", "range"]
 FEATURE_COLUMNS = [
-    "base_weight", "n_agree", "vol_30d", "r_7d", "funding_3d", "oi_change_24h",
-    "sent_24h", "sent_7d", "n_7d", "hour", "macro_today",
+    "base_weight",
+    "n_agree",
+    "vol_30d",
+    "r_7d",
+    "funding_3d",
+    "oi_change_24h",
+    "sent_24h",
+    "sent_7d",
+    "n_7d",
+    "hour",
+    "macro_today",
     *[f"regime_{r}" for r in REGIMES],
 ]
 DEFAULT_BASES = [{"family": "trend_ts", "params": {}}, {"family": "xs_momentum", "params": {}}]
@@ -108,7 +117,11 @@ class MetaLabel(Competitor):
         X = pd.DataFrame(rows)[FEATURE_COLUMNS].to_numpy(dtype=float)
         probs = np.asarray(self._booster.predict(X), dtype=float).reshape(-1)
         thr = float(self.params["threshold"])
-        for (sym, (w, n)), p in zip(combined.items(), probs):
+        for (sym, (w, n)), p in zip(combined.items(), probs, strict=True):
             if p > thr:
-                out[sym] = Target(w * float(p), conviction=float(p), reason={"p_win": round(float(p), 3), "regime": regime, "n_agree": n})
+                out[sym] = Target(
+                    w * float(p),
+                    conviction=float(p),
+                    reason={"p_win": round(float(p), 3), "regime": regime, "n_agree": n},
+                )
         return cap_gross(out)

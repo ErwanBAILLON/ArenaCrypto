@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import pytest
 
 from arena.competitors.meta_label import FEATURE_COLUMNS, MetaLabel, build_features, combine_bases
@@ -47,7 +46,9 @@ def test_model_scales_weights(trending_snapshot):
     X = rng.normal(size=(200, len(FEATURE_COLUMNS)))
     y = np.ones(200)  # a model that has only ever seen winners predicts ~1
     y[:5] = 0
-    booster = lgb.train({"objective": "binary", "verbose": -1, "min_data_in_leaf": 5}, lgb.Dataset(X, y), num_boost_round=5)
+    booster = lgb.train(
+        {"objective": "binary", "verbose": -1, "min_data_in_leaf": 5}, lgb.Dataset(X, y), num_boost_round=5
+    )
     ml = MetaLabel({"model_str": booster.model_to_string(), "threshold": 0.5})
     plain = MetaLabel().decide(trending_snapshot)
     scaled = ml.decide(trending_snapshot)
@@ -63,6 +64,8 @@ def test_high_threshold_flattens(trending_snapshot):
     rng = np.random.default_rng(1)
     X = rng.normal(size=(200, len(FEATURE_COLUMNS)))
     y = rng.integers(0, 2, 200)
-    booster = lgb.train({"objective": "binary", "verbose": -1, "min_data_in_leaf": 5}, lgb.Dataset(X, y), num_boost_round=3)
+    booster = lgb.train(
+        {"objective": "binary", "verbose": -1, "min_data_in_leaf": 5}, lgb.Dataset(X, y), num_boost_round=3
+    )
     ml = MetaLabel({"model_str": booster.model_to_string(), "threshold": 0.999})
     assert ml.decide(trending_snapshot) == {}

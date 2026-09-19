@@ -17,8 +17,12 @@ from arena.core.snapshot import Snapshot
 from arena.core.types import Decision, Target
 
 DEFAULT_PARAMS: dict[str, Any] = {
-    "vol_window": 24 * 30, "vol_lookback_days": 180, "trend_fast": 50, "trend_slow": 200,
-    "bull_weight": 0.5, "range_carry_weight": 0.5,
+    "vol_window": 24 * 30,
+    "vol_lookback_days": 180,
+    "trend_fast": 50,
+    "trend_slow": 200,
+    "bull_weight": 0.5,
+    "range_carry_weight": 0.5,
 }
 LABELS = ("bull_calm", "bull_vol", "bear", "range", "unknown")
 CARRY_LOOKBACK_DAYS = 3
@@ -36,8 +40,8 @@ def regime_label(snap: Snapshot, symbol: str = "BTC", params: dict[str, Any] | N
         return "unknown"
     trend_up = float(ema(close, int(p["trend_fast"])).iloc[-1]) > float(ema(close, int(p["trend_slow"])).iloc[-1])
     vol = realised_vol(close, int(p["vol_window"])).dropna()
-    recent = vol.iloc[-int(p["vol_lookback_days"]) * 24:]
-    lo, hi = recent.quantile(1 / 3), recent.quantile(2 / 3)
+    recent = vol.iloc[-int(p["vol_lookback_days"]) * 24 :]
+    hi = recent.quantile(2 / 3)
     v = float(vol.iloc[-1])
     high_vol = v > hi
     if trend_up:
@@ -69,6 +73,7 @@ class Regime(HoldingCompetitor):
             w = float(p["range_carry_weight"]) / 2
             top = [(s, m) for s, m in rank_funding(snap, CARRY_LOOKBACK_DAYS) if m > 0][:2]
             for i, (sym, mean) in enumerate(top):
-                out[sym] = Target(weight=w, conviction=0.5, kind="carry",
-                                  reason={**reason, "mean_funding_8h": mean, "rank": i})
+                out[sym] = Target(
+                    weight=w, conviction=0.5, kind="carry", reason={**reason, "mean_funding_8h": mean, "rank": i}
+                )
         return cap_gross(out)

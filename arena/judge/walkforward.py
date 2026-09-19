@@ -6,9 +6,10 @@ fold so that no state (fitted models, caches) leaks between folds.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 

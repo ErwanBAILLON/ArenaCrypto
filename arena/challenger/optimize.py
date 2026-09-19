@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
 
 import numpy as np
 import optuna
@@ -52,8 +51,18 @@ def next_version(conn, family: str) -> int:
         return int(cur.fetchone()["v"]) + 1
 
 
-def run(conn: psycopg.Connection, family: str, history: HistoryFrames, symbols: list[str], start: datetime, end: datetime,
-        fees: FeeModel, null_thr: float, n_trials: int = 40, seed: int = 0) -> CompetitorSpec | None:
+def run(
+    conn: psycopg.Connection,
+    family: str,
+    history: HistoryFrames,
+    symbols: list[str],
+    start: datetime,
+    end: datetime,
+    fees: FeeModel,
+    null_thr: float,
+    n_trials: int = 40,
+    seed: int = 0,
+) -> CompetitorSpec | None:
     """Search, gate the best candidate, insert it as challenger. Returns the spec or None."""
     if family not in SPACES:
         raise ValueError(f"no search space for {family}")
@@ -66,13 +75,25 @@ def run(conn: psycopg.Connection, family: str, history: HistoryFrames, symbols: 
         return None
     adm = admit(conn, family, best, history, symbols, start, end, fees, null_thr, notes="optimize best")
     if not adm.verdict.admitted:
-        bstore.add_alert(conn, Alert(kind="rejected", payload={"detail": f"{family} optimize best rejected: {', '.join(adm.verdict.failed)}"}))
+        bstore.add_alert(
+            conn,
+            Alert(
+                kind="rejected", payload={"detail": f"{family} optimize best rejected: {', '.join(adm.verdict.failed)}"}
+            ),
+        )
         conn.commit()
         return None
     version = next_version(conn, family)
-    spec = CompetitorSpec(None, f"{family}_v{version}", family, version, best, status="challenger",
-                          parent_id=champion.id if champion else None,
-                          rationale=f"optuna best of {n_trials} (mean OOF Sharpe {study.best_value:.2f}); trial {adm.trial_id}")
+    spec = CompetitorSpec(
+        None,
+        f"{family}_v{version}",
+        family,
+        version,
+        best,
+        status="challenger",
+        parent_id=champion.id if champion else None,
+        rationale=f"optuna best of {n_trials} (mean OOF Sharpe {study.best_value:.2f}); trial {adm.trial_id}",
+    )
     cid = registry.insert_competitor(conn, spec)
     conn.commit()
     return CompetitorSpec(**{**spec.__dict__, "id": cid})

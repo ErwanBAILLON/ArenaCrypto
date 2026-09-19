@@ -21,8 +21,19 @@ def _candles(drift: float, sigma_early: float, sigma_late: float, seed: int = 0)
         else:
             r = rng.normal(0, 0.01, BARS)
         close = 100 * np.exp(np.cumsum(r))
-        frames.append(pd.DataFrame({"symbol": sym, "ts": idx, "open": close, "high": close * 1.001,
-                                    "low": close * 0.999, "close": close, "volume": 1.0}))
+        frames.append(
+            pd.DataFrame(
+                {
+                    "symbol": sym,
+                    "ts": idx,
+                    "open": close,
+                    "high": close * 1.001,
+                    "low": close * 0.999,
+                    "close": close,
+                    "volume": 1.0,
+                }
+            )
+        )
     return pd.concat(frames, ignore_index=True)
 
 
@@ -30,12 +41,15 @@ def _snap(c, funding=None):
     return Snapshot.from_long(c["ts"].max(), SYMBOLS, c, funding)
 
 
-@pytest.mark.parametrize("drift,early,late,label", [
-    (0.001, 0.02, 0.005, "bull_calm"),
-    (0.001, 0.005, 0.02, "bull_vol"),
-    (-0.001, 0.005, 0.02, "bear"),
-    (-0.001, 0.02, 0.005, "range"),
-])
+@pytest.mark.parametrize(
+    "drift,early,late,label",
+    [
+        (0.001, 0.02, 0.005, "bull_calm"),
+        (0.001, 0.005, 0.02, "bull_vol"),
+        (-0.001, 0.005, 0.02, "bear"),
+        (-0.001, 0.02, 0.005, "range"),
+    ],
+)
 def test_labels_on_constructed_series(drift, early, late, label):
     assert regime_label(_snap(_candles(drift, early, late))) == label
 

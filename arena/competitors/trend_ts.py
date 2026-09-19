@@ -22,8 +22,14 @@ CONVICTION_SCALE = 0.20  # |30d return| that counts as full conviction
 class TrendTS(HoldingCompetitor):
     family = "trend_ts"
     default_params = {
-        "fast": 50, "slow": 200, "lb_short_days": 30, "lb_long_days": 90,
-        "target_vol": 0.20, "vol_window": 24 * 30, "max_weight": 0.5, "atr_stop_mult": 3.0,
+        "fast": 50,
+        "slow": 200,
+        "lb_short_days": 30,
+        "lb_long_days": 90,
+        "target_vol": 0.20,
+        "vol_window": 24 * 30,
+        "max_weight": 0.5,
+        "atr_stop_mult": 3.0,
     }
 
     def warmup_bars(self) -> int:
@@ -58,7 +64,8 @@ class TrendTS(HoldingCompetitor):
             size = min(float(p["max_weight"]), float(p["target_vol"]) / max(vol, VOL_FLOOR))
             conviction = float(np.clip(abs(r_short) / CONVICTION_SCALE, 0.0, 1.0))
             out[sym] = Target(
-                weight=direction * size, conviction=conviction,
+                weight=direction * size,
+                conviction=conviction,
                 reason={"r_short": r_short, "r_long": r_long, "vol": vol, "ema_fast": e_fast, "ema_slow": e_slow},
             )
         return cap_gross(out)

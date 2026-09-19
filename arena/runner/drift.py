@@ -32,8 +32,9 @@ def champion_bleeding(spec: CompetitorSpec, returns: pd.Series) -> Alert | None:
         return None
     s, tr = sharpe(r), total_return(r)
     if s < SHARPE_FLOOR and tr < RETURN_FLOOR:
-        return Alert(kind="drift", competitor_id=spec.id,
-                     payload={"detail": f"{spec.name}: 30d Sharpe {s:.2f}, return {tr:.1%}"})
+        return Alert(
+            kind="drift", competitor_id=spec.id, payload={"detail": f"{spec.name}: 30d Sharpe {s:.2f}, return {tr:.1%}"}
+        )
     return None
 
 
@@ -41,8 +42,11 @@ def silent_competitor(spec: CompetitorSpec, last_decision_ts: datetime | None, n
     if spec.role != "competitor":
         return None
     if last_decision_ts is None or pd.Timestamp(now) - pd.Timestamp(last_decision_ts) > timedelta(days=SILENT_DAYS):
-        return Alert(kind="drift", competitor_id=spec.id,
-                     payload={"detail": f"{spec.name}: no non-zero target for {SILENT_DAYS}+ days"})
+        return Alert(
+            kind="drift",
+            competitor_id=spec.id,
+            payload={"detail": f"{spec.name}: no non-zero target for {SILENT_DAYS}+ days"},
+        )
     return None
 
 

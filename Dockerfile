@@ -8,7 +8,7 @@ WORKDIR /app
 # lightgbm wheels need libgomp at runtime; nothing is compiled here.
 COPY pyproject.toml uv.lock README.md ./
 COPY arena/ ./arena/
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable --extra web
 
 FROM python:3.12-slim AS runtime
 RUN apt-get update \

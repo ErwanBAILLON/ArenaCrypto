@@ -14,7 +14,7 @@ def test_folds_anchored_contiguous_cover_range():
     assert all(f.train_start == start for f in fs)
     assert fs[0].test_start == start + pd.Timedelta(days=180)
     assert all(f.train_end == f.test_start for f in fs)
-    assert all(a.test_end == b.test_start for a, b in zip(fs, fs[1:]))
+    assert all(a.test_end == b.test_start for a, b in zip(fs, fs[1:], strict=False))
     assert all(f.test_end - f.test_start == pd.Timedelta(days=90) for f in fs[:2])
     assert fs[-1].test_end == start + pd.Timedelta(days=180 + 2 * 90)
     assert end - fs[-1].test_end < pd.Timedelta(days=30)
@@ -58,11 +58,12 @@ def test_fresh_competitor_per_fold_and_test_window_only():
         return c
 
     start, end = candles["ts"].min(), candles["ts"].max() + pd.Timedelta(hours=1)
-    results = run_walkforward(make, HistoryFrames(candles), ["BTC", "ETH"], start, end, FeeModel(),
-                              test_days=30, min_train_days=180)
+    results = run_walkforward(
+        make, HistoryFrames(candles), ["BTC", "ETH"], start, end, FeeModel(), test_days=30, min_train_days=180
+    )
     fs = folds(start, end, test_days=30, min_train_days=180)
     assert len(results) == len(fs) == Counting.instances == 4
-    for (fold, res), comp in zip(results, made):
+    for (fold, res), comp in zip(results, made, strict=True):
         assert res.returns.index.min() == fold.test_start  # warm-up satisfied from history before the fold
         assert res.returns.index.max() == fold.test_end - pd.Timedelta(hours=1)
         assert comp.calls == len(res.rows)

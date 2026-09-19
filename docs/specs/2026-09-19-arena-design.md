@@ -278,8 +278,7 @@ digest.
 
 Freqtrade (6 deployments at 0, 6 PVCs), trading-brain, neuronalpha remain
 untouched by this spec but are marked for removal in a separate clean-up;
-secrets in clear in `freqtrade-alpha/helm/values-secrets.yaml`, `.env` and
-`openalice/README.md` are to be rotated. Tickforge stays as the tick-level
+credentials found in clear in the retired repositories are to be rotated. Tickforge stays as the tick-level
 confirmation tool for finalists (future work).
 
 ## 15. Roadmap after this spec

@@ -1,6 +1,5 @@
 import time
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -38,8 +37,9 @@ class Flat:
 
 def flat_candles(bars: int, price: float = 100.0, start="2024-01-01T01:00:00Z") -> pd.DataFrame:
     idx = pd.date_range(start, periods=bars, freq="1h", tz="UTC")
-    return pd.DataFrame({"symbol": "BTC", "ts": idx, "open": price, "high": price, "low": price,
-                         "close": price, "volume": 1.0})
+    return pd.DataFrame(
+        {"symbol": "BTC", "ts": idx, "open": price, "high": price, "low": price, "close": price, "volume": 1.0}
+    )
 
 
 def test_always_long_btc_matches_book_compounding():
@@ -60,8 +60,9 @@ def test_always_long_btc_matches_book_compounding():
 
 def test_flat_competitor_zero_returns():
     candles = make_candles(SYMS, bars=24 * 30)
-    res = run(Flat(), HistoryFrames(candles, make_funding(SYMS, candles)), SYMS,
-              "2024-01-01", candles["ts"].max(), FeeModel())
+    res = run(
+        Flat(), HistoryFrames(candles, make_funding(SYMS, candles)), SYMS, "2024-01-01", candles["ts"].max(), FeeModel()
+    )
     assert res.decisions == 0
     assert len(res.rows) == 24 * 30
     assert (res.returns == 0).all()
@@ -72,8 +73,14 @@ def test_flat_competitor_zero_returns():
 def test_funding_accrual_short_on_flat_prices():
     candles = flat_candles(24 * 20)
     funding = make_funding(["BTC"], candles, rate=0.0001)
-    res = run(AlwaysShortBTC(), HistoryFrames(candles, funding), ["BTC"],
-              "2024-01-01", candles["ts"].max(), FeeModel(0.0, 0.0, 0.0))
+    res = run(
+        AlwaysShortBTC(),
+        HistoryFrames(candles, funding),
+        ["BTC"],
+        "2024-01-01",
+        candles["ts"].max(),
+        FeeModel(0.0, 0.0, 0.0),
+    )
     first_ts = res.returns.index[0]
     stamps = funding[(funding.ts > first_ts) & (funding.ts <= candles["ts"].max())]
     assert len(stamps) > 10
@@ -103,6 +110,12 @@ def test_no_lookahead_when_history_extended():
 def test_speed_single_symbol_2000_bars():
     candles = make_candles(["BTC"], bars=2000)
     t0 = time.perf_counter()
-    run(AlwaysLongBTC(), HistoryFrames(candles, make_funding(["BTC"], candles)), ["BTC"],
-        candles["ts"].min(), candles["ts"].max(), FeeModel())
+    run(
+        AlwaysLongBTC(),
+        HistoryFrames(candles, make_funding(["BTC"], candles)),
+        ["BTC"],
+        candles["ts"].min(),
+        candles["ts"].max(),
+        FeeModel(),
+    )
     assert time.perf_counter() - t0 < 3.0

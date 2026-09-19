@@ -5,8 +5,7 @@ from arena.telegram.sender import send
 
 
 def _settings(**kw) -> Settings:
-    base = dict(database_url="", telegram_bot_token="123:abc", telegram_chat_id="42",
-                dry_run=False, universe_path=None)
+    base = dict(database_url="", telegram_bot_token="123:abc", telegram_chat_id="42", dry_run=False, universe_path=None)
     base.update(kw)
     return Settings(**base)
 
@@ -50,6 +49,7 @@ def test_transport_error_returns_false():
 
 
 def test_ok_false_returns_false():
-    client = httpx.Client(transport=httpx.MockTransport(
-        lambda r: httpx.Response(200, json={"ok": False, "description": "bad"})))
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"ok": False, "description": "bad"}))
+    )
     assert send(_settings(), "msg", client=client) is False

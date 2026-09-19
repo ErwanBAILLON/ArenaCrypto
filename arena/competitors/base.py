@@ -34,7 +34,7 @@ class Competitor(ABC):
         """Serialisable state to carry across processes (hysteresis only). Default: none."""
         return {}
 
-    def restore_state(self, state: dict[str, Any]) -> None:
+    def restore_state(self, state: dict[str, Any]) -> None:  # noqa: B027 - opt-in hook; stateless competitors keep the no-op
         """Inverse of :meth:`state`. Default: nothing to restore."""
 
 
@@ -85,7 +85,11 @@ class HoldingCompetitor(Competitor):
     def decide(self, snap: Snapshot) -> Decision:
         if self._held_ts is not None and snap.ts.hour != self.rebalance_hour:
             return dict(self._held)
-        if self._held_ts is not None and self.rebalance_weekday is not None and snap.ts.weekday() != self.rebalance_weekday:
+        if (
+            self._held_ts is not None
+            and self.rebalance_weekday is not None
+            and snap.ts.weekday() != self.rebalance_weekday
+        ):
             return dict(self._held)
         if self._held_ts is not None and self._held_ts == snap.ts.isoformat():
             return dict(self._held)
@@ -105,14 +109,22 @@ class HoldingCompetitor(Competitor):
     def state(self) -> dict[str, Any]:
         return {
             "held_ts": self._held_ts,
-            "held": {s: {"weight": t.weight, "conviction": t.conviction, "kind": t.kind, "reason": t.reason}
-                     for s, t in self._held.items()},
+            "held": {
+                s: {"weight": t.weight, "conviction": t.conviction, "kind": t.kind, "reason": t.reason}
+                for s, t in self._held.items()
+            },
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
         from arena.core.types import Target
 
         self._held_ts = state.get("held_ts")
-        self._held = {s: Target(weight=float(v["weight"]), conviction=float(v.get("conviction", 0.5)),
-                                kind=v.get("kind", "perp"), reason=dict(v.get("reason", {})))
-                      for s, v in (state.get("held") or {}).items()}
+        self._held = {
+            s: Target(
+                weight=float(v["weight"]),
+                conviction=float(v.get("conviction", 0.5)),
+                kind=v.get("kind", "perp"),
+                reason=dict(v.get("reason", {})),
+            )
+            for s, v in (state.get("held") or {}).items()
+        }

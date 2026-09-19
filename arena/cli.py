@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import typer
@@ -26,7 +26,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 FOUNDERS = ["carry", "trend_ts", "xs_momentum", "regime", "meta_label"]
 NULLS = [
     CompetitorSpec(None, "null_cash", "null_cash", 1, {}, role="null", status="champion"),
-    *[CompetitorSpec(None, f"null_random_{i}", "null_random", 1, {"seed": i}, role="null", status="champion") for i in range(5)],
+    *[
+        CompetitorSpec(None, f"null_random_{i}", "null_random", 1, {"seed": i}, role="null", status="champion")
+        for i in range(5)
+    ],
     CompetitorSpec(None, "bench_btc_hold", "bench_btc_hold", 1, {}, role="benchmark", status="champion"),
     CompetitorSpec(None, "bench_carry_equal", "bench_carry_equal", 1, {}, role="benchmark", status="champion"),
 ]
@@ -40,7 +43,7 @@ def _ctx():
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @app.command()
@@ -92,7 +95,10 @@ def tick(no_ingest: bool = typer.Option(False, help="Skip market ingestion (repl
         rep = run_tick(conn, settings, universe, now, client=None if no_ingest else client, ingest=not no_ingest)
     names = {s.id: s.name for s in registry.list_competitors(conn)}
     sent = alerts.flush(conn, settings, now, names)
-    typer.echo(f"tick {rep.ts}: booked={len(rep.booked)} skipped={len(rep.skipped)} failed={rep.failed} ingested={rep.ingested} alerts_sent={sent}")
+    typer.echo(
+        f"tick {rep.ts}: booked={len(rep.booked)} skipped={len(rep.skipped)} failed={rep.failed} "
+        f"ingested={rep.ingested} alerts_sent={sent}"
+    )
 
 
 @app.command()
@@ -118,7 +124,9 @@ def _history_and_null(conn, universe, end: datetime):
 
 
 @app.command()
-def judge(family: str = typer.Argument(..., help="Family to gate with default params (or NAME of a competitor)")) -> None:
+def judge(
+    family: str = typer.Argument(..., help="Family to gate with default params (or NAME of a competitor)"),
+) -> None:
     """Run the entry gate and print the verdict (records a trial)."""
     _, conn, universe = _ctx()
     spec = registry.get_competitor(conn, family)
@@ -142,10 +150,28 @@ def challenger(family: str = typer.Option("", help="Restrict to one rule family"
     history, fees, start, thr = _history_and_null(conn, universe, end)
     fams = [family] if family else list(optimize.SPACES)
     for fam in fams:
-        spec = optimize.run(conn, fam, history, universe.symbols, start, end, fees, thr, n_trials=n_trials, seed=int(end.timestamp()) % 10_000)
+        spec = optimize.run(
+            conn,
+            fam,
+            history,
+            universe.symbols,
+            start,
+            end,
+            fees,
+            thr,
+            n_trials=n_trials,
+            seed=int(end.timestamp()) % 10_000,
+        )
         typer.echo(f"{fam}: {'challenger ' + spec.name if spec else 'no new challenger'}")
         if spec:
-            bstore.add_alert(conn, Alert(kind="info", competitor_id=spec.id, payload={"detail": f"new challenger {spec.name}: {spec.rationale}"}))
+            bstore.add_alert(
+                conn,
+                Alert(
+                    kind="info",
+                    competitor_id=spec.id,
+                    payload={"detail": f"new challenger {spec.name}: {spec.rationale}"},
+                ),
+            )
             conn.commit()
 
 
@@ -185,23 +211,73 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
             continue
         params = dict(REGISTRY[fam].default_params)
         params.pop("model_str", None)
-        adm = admission.admit(conn, fam, params, history, universe.symbols, start, end, fees, thr, notes="bootstrap founder")
+        adm = admission.admit(
+            conn, fam, params, history, universe.symbols, start, end, fees, thr, notes="bootstrap founder"
+        )
         status = "champion" if adm.verdict.admitted else "challenger"
-        cid = registry.insert_competitor(conn, CompetitorSpec(
-            None, f"{fam}_v1", fam, 1, params, status=status,
-            rationale=f"founder; gate {'admitted' if adm.verdict.admitted else 'rejected: ' + ', '.join(adm.verdict.failed)}; trial {adm.trial_id}"))
+        cid = registry.insert_competitor(
+            conn,
+            CompetitorSpec(
+                None,
+                f"{fam}_v1",
+                fam,
+                1,
+                params,
+                status=status,
+                rationale=(
+                    "founder; gate "
+                    f"{'admitted' if adm.verdict.admitted else 'rejected: ' + ', '.join(adm.verdict.failed)}; "
+                    f"trial {adm.trial_id}"
+                ),
+            ),
+        )
         if not adm.verdict.admitted:
-            bstore.add_alert(conn, Alert(kind="rejected", competitor_id=cid, payload={"detail": f"{fam}_v1 rejected at gate ({', '.join(adm.verdict.failed)}); enters as challenger"}))
+            bstore.add_alert(
+                conn,
+                Alert(
+                    kind="rejected",
+                    competitor_id=cid,
+                    payload={
+                        "detail": f"{fam}_v1 rejected at gate ({', '.join(adm.verdict.failed)}); enters as challenger"
+                    },
+                ),
+            )
         conn.commit()
         m = adm.verdict.metrics
-        lines.append(f"{fam}: {status} sharpe={m.get('sharpe', 0):.2f} dsr={m.get('dsr', 0):.2f} p={m.get('bootstrap_p', 1):.2f} mdd={m.get('max_drawdown', 0):.1%}")
+        lines.append(
+            f"{fam}: {status} sharpe={m.get('sharpe', 0):.2f} dsr={m.get('dsr', 0):.2f} "
+            f"p={m.get('bootstrap_p', 1):.2f} mdd={m.get('max_drawdown', 0):.1%}"
+        )
     if "news" not in families_present:
-        registry.insert_competitor(conn, CompetitorSpec(None, "news_v1", "news", 1, {}, status="challenger", rationale="founder; forward-only family, not backtest-gated"))
+        registry.insert_competitor(
+            conn,
+            CompetitorSpec(
+                None,
+                "news_v1",
+                "news",
+                1,
+                {},
+                status="challenger",
+                rationale="founder; forward-only family, not backtest-gated",
+            ),
+        )
         conn.commit()
         lines.append("news: challenger (forward-only)")
     summary = "Arena bootstrapped\n" + "\n".join(lines) + f"\nnull 95th pct Sharpe {thr:.2f}"
     typer.echo(summary)
     sender.send(settings, templates.event_alert("info", summary))
+
+
+@app.command()
+def web(
+    host: str = typer.Option("0.0.0.0", help="Bind address"), port: int = typer.Option(8080, help="TCP port")
+) -> None:
+    """Serve the read-only dashboard (requires the ``web`` extra)."""
+    import uvicorn
+
+    from arena.web.app import create_app
+
+    uvicorn.run(create_app(Settings.from_env()), host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":

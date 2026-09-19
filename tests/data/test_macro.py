@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
 from arena.data import macro
 
-NOW = datetime(2026, 9, 19, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 19, tzinfo=UTC)
 EVENTS = [
     {"title": "CPI m/m", "country": "USD", "date": "2026-09-22T08:30:00-04:00", "impact": "High", "forecast": "0.3%"},
     {"title": "Bank Holiday", "country": "JPY", "date": "2026-09-21T00:00:00-04:00", "impact": "Holiday"},
@@ -28,7 +28,7 @@ def test_calendar_keeps_high_only_and_converts_to_utc():
     assert df["title"].tolist() == ["CPI m/m", "FOMC Statement"]
     assert set(df["impact"]) == {"High"}
     assert str(df["ts"].dt.tz) == "UTC"
-    assert df["ts"].iloc[0] == datetime(2026, 9, 22, 12, 30, tzinfo=timezone.utc)
+    assert df["ts"].iloc[0] == datetime(2026, 9, 22, 12, 30, tzinfo=UTC)
 
 
 def test_calendar_empty_when_nothing_high():

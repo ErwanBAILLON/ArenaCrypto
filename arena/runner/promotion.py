@@ -43,7 +43,9 @@ def ready(c: Candidate, now: datetime) -> bool:
     return age >= timedelta(days=MIN_DAYS) or c.decisions >= MIN_DECISIONS
 
 
-def should_promote(challenger: Candidate, champion: Candidate | None, null_returns: pd.DataFrame, now: datetime) -> tuple[bool, dict]:
+def should_promote(
+    challenger: Candidate, champion: Candidate | None, null_returns: pd.DataFrame, now: datetime
+) -> tuple[bool, dict]:
     """Return (promote?, evidence). ``champion`` is None when the family has no champion yet."""
     if not ready(challenger, now):
         return False, {"reason": "not_ready"}
@@ -63,8 +65,11 @@ def should_promote(challenger: Candidate, champion: Candidate | None, null_retur
 
 def promotion_alert(challenger: CompetitorSpec, champion: CompetitorSpec | None, evidence: dict) -> Alert:
     old = champion.name if champion else "none"
-    return Alert(kind="promotion", competitor_id=challenger.id,
-                 payload={"detail": f"{challenger.name} promoted to champion of {challenger.family} (was {old})", **evidence})
+    return Alert(
+        kind="promotion",
+        competitor_id=challenger.id,
+        payload={"detail": f"{challenger.name} promoted to champion of {challenger.family} (was {old})", **evidence},
+    )
 
 
 def surplus_challengers(challengers: list[CompetitorSpec]) -> list[CompetitorSpec]:
@@ -73,7 +78,7 @@ def surplus_challengers(challengers: list[CompetitorSpec]) -> list[CompetitorSpe
     for c in challengers:
         by_family.setdefault(c.family, []).append(c)
     out: list[CompetitorSpec] = []
-    for fam, lst in by_family.items():
+    for lst in by_family.values():
         lst = sorted(lst, key=lambda s: s.id or 0)
         out.extend(lst[: max(0, len(lst) - MAX_CHALLENGERS_PER_FAMILY)])
     return out

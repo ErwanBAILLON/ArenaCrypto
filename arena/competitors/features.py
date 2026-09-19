@@ -16,9 +16,6 @@ def ema(s: pd.Series, span: int) -> pd.Series:
     return s.ewm(span=span, adjust=False).mean()
 
 
-
-
-
 def atr(candles_df: pd.DataFrame, window: int = 14) -> pd.Series:
     """Average True Range: rolling mean of max(H-L, |H-prevC|, |L-prevC|)."""
     prev_close = candles_df["close"].shift(1)
@@ -79,11 +76,11 @@ def last_ema(s: pd.Series, span: int) -> float:
 def last_atr(candles_df: pd.DataFrame, window: int = 14) -> float:
     """Last ATR value (rolling mean of the true range over ``window`` bars)."""
     tail = candles_df.iloc[-(window + 1) :]
-    h, l, c = (tail[k].to_numpy(dtype=float) for k in ("high", "low", "close"))
+    h, lo, c = (tail[k].to_numpy(dtype=float) for k in ("high", "low", "close"))
     if len(c) < window + 1:
         return float("nan")
     prev = c[:-1]
-    tr = np.maximum.reduce([h[1:] - l[1:], np.abs(h[1:] - prev), np.abs(l[1:] - prev)])
+    tr = np.maximum.reduce([h[1:] - lo[1:], np.abs(h[1:] - prev), np.abs(lo[1:] - prev)])
     return float(tr.mean())
 
 

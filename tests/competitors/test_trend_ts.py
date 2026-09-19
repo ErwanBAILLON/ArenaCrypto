@@ -1,5 +1,3 @@
-import pandas as pd
-
 from arena.competitors.trend_ts import TrendTS
 from arena.core.snapshot import Snapshot
 from tests.conftest import SYMBOLS, make_candles

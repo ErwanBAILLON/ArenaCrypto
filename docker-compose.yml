@@ -1,0 +1,40 @@
+# Local development stack: a Postgres 16 and the Arena image.
+#
+#   docker compose up -d postgres
+#   docker compose run --rm arena migrate
+#   docker compose run --rm arena backfill --since 2025-01-01
+#   docker compose run --rm arena tick --no-ingest
+#
+# The `arena` service is a CLI, not a daemon: it prints `--help` and exits
+# unless you pass a sub-command. Every run uses DRY_RUN=true so nothing is
+# ever sent to Telegram from a laptop.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: arena
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: arena
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arena -d arena"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  arena:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://arena:arena@postgres:5432/arena
+      DRY_RUN: "true"
+      ARENA_WORKERS: "2"
+    command: ["--help"]
+
+volumes:
+  pgdata:

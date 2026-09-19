@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Arena{% endblock %}</title>
+<style>
+:root { --bg:#fbfbf9; --fg:#1d1f21; --muted:#6b7280; --line:#e2e4e8; --card:#ffffff; --accent:#0072B2;
+        --ok:#009E73; --warn:#E69F00; --bad:#D55E00; --pill:#eef0f3; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#15171a; --fg:#e6e7ea; --muted:#9aa1ab; --line:#2b2f36; --card:#1d2024; --pill:#262a30; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+header { display:flex; gap:20px; align-items:baseline; padding:12px 20px; border-bottom:1px solid var(--line); }
+header h1 { margin:0; font-size:18px; } header nav a { margin-right:14px; color:var(--muted); }
+header nav a.active { color:var(--fg); font-weight:600; }
+header .status { margin-left:auto; color:var(--muted); font-size:12px; }
+main { max-width:1200px; margin:0 auto; padding:16px 20px 40px; }
+h2 { font-size:15px; margin:24px 0 8px; } h2:first-child { margin-top:8px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:12px 14px; }
+.grid { display:grid; gap:16px; grid-template-columns: 1fr; }
+@media (min-width: 900px) { .grid.two { grid-template-columns: 2fr 1fr; } }
+table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { color:var(--muted); font-weight:500; font-size:12px; }
+td.n, th.n { text-align:right; }
+.pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; background:var(--pill); color:var(--fg); }
+.pill.champion { background:var(--ok); color:#fff; } .pill.challenger { background:var(--warn); color:#fff; }
+.pill.retired, .pill.candidate { background:var(--pill); } .pill.null, .pill.benchmark { color:var(--muted); }
+.pill.admitted { background:var(--ok); color:#fff; } .pill.rejected { background:var(--bad); color:#fff; }
+.pos { color:var(--ok); } .neg { color:var(--bad); }
+.stale { color:var(--bad); font-weight:600; }
+.muted { color:var(--muted); } code, pre { font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
+pre { background:var(--pill); padding:8px 10px; border-radius:4px; overflow:auto; margin:0; }
+.chart { display:block; color:var(--fg); }
+details summary { cursor:pointer; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/">⚔️ Arena</a></h1>
+  <nav>
+    <a href="/" class="{{ 'active' if active == 'home' }}">Leaderboard</a>
+    <a href="/trials" class="{{ 'active' if active == 'trials' }}">Trials</a>
+    <a href="/alerts" class="{{ 'active' if active == 'alerts' }}">Alerts</a>
+    <a href="/api/leaderboard.json">JSON</a>
+  </nav>
+  <span class="status">signal-only · read-only · {{ now|iso }} UTC</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

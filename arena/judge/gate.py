@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
-
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -39,6 +39,9 @@ class GateConfig:
     max_drawdown: float = 0.30
     min_decisions: int = 30
     null_quantile: float = 0.95
+
+
+DEFAULT_GATE = GateConfig()
 
 
 def null_sharpe_threshold(null_results: list[BacktestResult], q: float = 0.95) -> float:
@@ -88,7 +91,7 @@ def evaluate(
     fold_results: list[tuple[Fold, BacktestResult]],
     null_threshold: float,
     n_trials: int,
-    cfg: GateConfig = GateConfig(),
+    cfg: GateConfig = DEFAULT_GATE,
 ) -> Verdict:
     """Concatenate the test-window returns of every fold and apply the §8 criteria.
 

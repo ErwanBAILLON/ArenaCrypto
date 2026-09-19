@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -6,7 +6,7 @@ from arena.core.types import Article
 from arena.nlp.lexicon import classify_event, detect_assets
 from arena.nlp.scorer import VaderScorer
 
-NOW = datetime(2024, 1, 10, tzinfo=timezone.utc)
+NOW = datetime(2024, 1, 10, tzinfo=UTC)
 
 
 def art(title: str, summary: str = "", id: int = 1) -> Article:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -36,7 +36,7 @@ def test_klines_pages_and_filters_open_bar():
         return httpx.Response(200, json=page)
 
     # "now" sits inside the very last candle: it must be dropped as still forming.
-    now = datetime.fromtimestamp((T0 + (binance.PAGE + 2) * H + 60_000) / 1000, tz=timezone.utc)
+    now = datetime.fromtimestamp((T0 + (binance.PAGE + 2) * H + 60_000) / 1000, tz=UTC)
     df = binance.klines(_client(handler), "BTCUSDT", T0, now=now)
 
     assert len(calls) == 2
@@ -45,7 +45,7 @@ def test_klines_pages_and_filters_open_bar():
     assert list(df.columns) == ["ts", "open", "high", "low", "close", "volume"]
     assert str(df["ts"].dt.tz) == "UTC"
     # ts is close time rounded up: first candle opened 00:00 -> labelled 01:00
-    assert df["ts"].iloc[0] == datetime(2024, 1, 1, 1, tzinfo=timezone.utc)
+    assert df["ts"].iloc[0] == datetime(2024, 1, 1, 1, tzinfo=UTC)
     assert df["open"].iloc[1] == 101.0 and df["close"].dtype == "float64"
 
 
@@ -57,9 +57,13 @@ def test_klines_empty_response():
 
 def test_funding_pages_until_short_page():
     calls = []
-    page1 = [{"symbol": "ETHUSDT", "fundingTime": T0 + i * 8 * H, "fundingRate": "0.0001", "markPrice": "1"}
-             for i in range(binance.PAGE)]
-    page2 = [{"symbol": "ETHUSDT", "fundingTime": T0 + binance.PAGE * 8 * H, "fundingRate": "-0.0002", "markPrice": "1"}]
+    page1 = [
+        {"symbol": "ETHUSDT", "fundingTime": T0 + i * 8 * H, "fundingRate": "0.0001", "markPrice": "1"}
+        for i in range(binance.PAGE)
+    ]
+    page2 = [
+        {"symbol": "ETHUSDT", "fundingTime": T0 + binance.PAGE * 8 * H, "fundingRate": "-0.0002", "markPrice": "1"}
+    ]
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(dict(request.url.params))
@@ -88,7 +92,7 @@ def test_open_interest_hist():
     df = binance.open_interest_hist(_client(handler), "BTCUSDT")
     assert list(df.columns) == ["ts", "oi"]
     assert df["oi"].tolist() == [20500.0, 20403.63]  # sorted by ts
-    assert df["ts"].iloc[0] == datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert df["ts"].iloc[0] == datetime(2024, 1, 1, tzinfo=UTC)
 
 
 def test_make_client_user_agent():

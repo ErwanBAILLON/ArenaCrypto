@@ -40,6 +40,8 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           uv python install 3.12
           uv sync --frozen --extra dev
+          uv run ruff check arena tests
+          uv run ruff format --check arena tests
           uv run pytest -q
 
       - name: Install Docker CLI

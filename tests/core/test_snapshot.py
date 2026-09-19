@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from arena.core.snapshot import Snapshot, resample_candles
-from tests.conftest import SYMBOLS, make_candles, make_funding
+from tests.conftest import SYMBOLS, make_funding
 
 
 def test_accessors_never_return_future(candles):
@@ -27,8 +27,11 @@ def test_appending_future_rows_does_not_change_present_view(candles):
 
 def test_4h_bar_contains_correct_hours():
     idx = pd.date_range("2024-01-01T01:00:00Z", periods=12, freq="1h")
-    c1h = pd.DataFrame({"open": range(12), "high": range(12), "low": range(12),
-                        "close": range(12), "volume": 1.0}, index=idx, dtype=float)
+    c1h = pd.DataFrame(
+        {"open": range(12), "high": range(12), "low": range(12), "close": range(12), "volume": 1.0},
+        index=idx,
+        dtype=float,
+    )
     c1h.index.name = "ts"
     c4h = resample_candles(c1h, "4h")
     # bar labelled 04:00 has 1h candles 01:00,02:00,03:00,04:00 -> closes 0..3

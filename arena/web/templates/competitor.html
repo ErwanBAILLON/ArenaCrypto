@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Arena · {{ d.spec.name }}{% endblock %}
+{% block content %}
+<h2>{{ d.spec.name }}
+  <span class="pill {{ d.spec.status }}">{{ d.spec.status }}</span>
+  {% if d.spec.role != 'competitor' %}<span class="pill {{ d.spec.role }}">{{ d.spec.role }}</span>{% endif %}
+</h2>
+<div class="grid two">
+<section class="card">
+  <table><tbody>
+    <tr><th>family</th><td>{{ d.spec.family }} v{{ d.spec.version }}</td></tr>
+    <tr><th>parent</th><td>{% if d.spec.parent_id %}<a href="/competitors/{{ d.spec.parent_id }}">{{ d.parent_name or d.spec.parent_id }}</a>{% else %}<span class="muted">none</span>{% endif %}</td></tr>
+    <tr><th>first book</th><td>{{ d.first_ts|iso or '—' }}</td></tr>
+    <tr><th>rationale</th><td>{{ d.spec.rationale or '—' }}</td></tr>
+  </tbody></table>
+</section>
+<section class="card">
+  <h2>params</h2>
+  <pre>{{ d.spec.params|pretty }}</pre>
+</section>
+</div>
+
+<h2>NAV since first book row</h2>
+<div class="card">{{ chart|safe }}</div>
+
+<h2>Current targets {% if d.current_ts %}<span class="muted">@ {{ d.current_ts|iso }}</span>{% endif %}</h2>
+<div class="card">
+<table>
+  <thead><tr><th>symbol</th><th class="n">weight</th><th>kind</th><th class="n">conviction</th><th>reason</th></tr></thead>
+  <tbody>
+  {% for t in d.current_targets %}
+  <tr><td>{{ t.symbol }}</td>
+      <td class="n {{ 'pos' if t.weight > 0 else 'neg' }}">{{ t.weight|num }}</td>
+      <td>{{ t.kind }}</td><td class="n">{{ t.conviction|num }}</td>
+      <td><code>{{ t.reason|kv }}</code></td></tr>
+  {% else %}<tr><td colspan="5" class="muted">flat</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Last 50 target rows</h2>
+<div class="card">
+<table>
+  <thead><tr><th>ts</th><th>symbol</th><th class="n">weight</th><th>kind</th><th class="n">conv</th></tr></thead>
+  <tbody>
+  {% for t in d.recent_targets %}
+  <tr><td>{{ t.ts|iso }}</td><td>{{ t.symbol }}</td>
+      <td class="n {{ 'pos' if t.weight > 0 else 'neg' }}">{{ t.weight|num }}</td><td>{{ t.kind }}</td><td class="n">{{ t.conviction|num }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">none</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if d.model_metrics is not none %}
+<h2>Latest model metrics</h2>
+<div class="card"><pre>{{ d.model_metrics|pretty }}</pre></div>
+{% endif %}
+
+<h2>Trials of family {{ d.spec.family }}</h2>
+<div class="card">
+<table>
+  <thead><tr><th>started</th><th>kind</th><th>verdict</th><th class="n">sharpe</th><th class="n">dsr</th><th class="n">p</th><th class="n">mdd</th><th>notes</th></tr></thead>
+  <tbody>
+  {% for t in d.trials %}
+  <tr><td>{{ t.started_at|iso }}</td><td>{{ t.kind }}</td>
+      <td>{% if t.verdict %}<span class="pill {{ t.verdict }}">{{ t.verdict }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="n">{{ t.highlights.sharpe|num }}</td><td class="n">{{ t.highlights.dsr|num }}</td>
+      <td class="n">{{ t.highlights.bootstrap_p|num }}</td><td class="n">{{ t.highlights.max_drawdown|pct }}</td>
+      <td class="muted">{{ t.notes }}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">none</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

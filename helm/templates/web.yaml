@@ -1,0 +1,145 @@
+{{- if .Values.web.enabled }}
+# Read-only dashboard: Deployment + Service + Traefik IngressRoute (+ optional BasicAuth)
+# + NetworkPolicy opening ingress 8080 from the Traefik namespace (namespace is default-deny).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arena-web
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "arena.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "arena.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "arena.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: arena
+          image: {{ include "arena.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["web", "--host", "0.0.0.0", "--port", "8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.targetName }}
+          env:
+            {{- include "arena.env" . | nindent 12 }}
+          # Readiness follows data freshness (/healthz is 503 when books are stale);
+          # liveness is TCP only so a stale database never crashloops the pod.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            {{- include "arena.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arena-web
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "arena.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+{{- if .Values.web.basicAuth.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: arena-web-auth
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  basicAuth:
+    secret: {{ .Values.web.basicAuth.secretName }}
+---
+{{- end }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: arena-web
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.web.host }}`)
+      kind: Rule
+      {{- if .Values.web.basicAuth.enabled }}
+      middlewares:
+        - name: arena-web-auth
+      {{- end }}
+      services:
+        - name: arena-web
+          port: 8080
+  tls:
+    certResolver: letsencrypt
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-from-traefik
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "arena.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.web.traefikNamespace }}
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}

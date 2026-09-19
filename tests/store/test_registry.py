@@ -81,7 +81,8 @@ def test_cached_null_threshold_reuses_trial(conn, monkeypatch):
 
     c = make_candles(["BTC"], bars=24 * 20)
     h = HistoryFrames(candles=c)
-    end = c["ts"].max(); start = end - pd.Timedelta(days=5)
+    end = c["ts"].max()
+    start = end - pd.Timedelta(days=5)
     calls = {"n": 0}
 
     def fake_sharpes(*a, **k):

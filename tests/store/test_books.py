@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -7,16 +7,13 @@ from arena.core.types import Alert, BookRow, CompetitorSpec, Target
 from arena.store import books as repo
 from arena.store.registry import insert_competitor
 
-T0 = datetime(2024, 6, 1, tzinfo=timezone.utc)
+T0 = datetime(2024, 6, 1, tzinfo=UTC)
 H = timedelta(hours=1)
 
 
 @pytest.fixture
 def cids(conn) -> list[int]:
-    return [
-        insert_competitor(conn, CompetitorSpec(None, f"c{i}", "carry", 1, {}, status="champion"))
-        for i in range(2)
-    ]
+    return [insert_competitor(conn, CompetitorSpec(None, f"c{i}", "carry", 1, {}, status="champion")) for i in range(2)]
 
 
 def row(ts: datetime, nav: float, ret: float) -> BookRow:
@@ -26,11 +23,16 @@ def row(ts: datetime, nav: float, ret: float) -> BookRow:
 def test_targets_write_skips_zero_and_last_targets(conn, cids):
     cid = cids[0]
     assert repo.last_targets(conn, cid) is None
-    repo.write_targets(conn, cid, T0, {
-        "BTC": Target(0.4, 0.9, "perp", {"z": 1.2}),
-        "ETH": Target(0.0),
-        "SOL": Target(0.3, kind="carry"),
-    })
+    repo.write_targets(
+        conn,
+        cid,
+        T0,
+        {
+            "BTC": Target(0.4, 0.9, "perp", {"z": 1.2}),
+            "ETH": Target(0.0),
+            "SOL": Target(0.3, kind="carry"),
+        },
+    )
     ts, targets = repo.last_targets(conn, cid)
     assert ts == T0 and ts.tzinfo is not None
     assert targets == {"BTC": ("perp", 0.4), "SOL": ("carry", 0.3)}
@@ -83,7 +85,7 @@ def test_allocations(conn, cids):
 
 def test_alerts_lifecycle(conn, cids):
     a = cids[0]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     i1 = repo.add_alert(conn, Alert("signal", {"weight": 0.4}, competitor_id=a, symbol="BTC"))
     i2 = repo.add_alert(conn, Alert("digest", {"text": "daily"}))
 
@@ -107,7 +109,7 @@ def test_alerts_lifecycle(conn, cids):
 
 def test_recent_alert_exists_matches_null_fields(conn, cids):
     a = cids[0]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     repo.add_alert(conn, Alert("drift", {}, competitor_id=a))
     assert repo.recent_alert_exists(conn, "drift", a, None, now - H)
     assert not repo.recent_alert_exists(conn, "drift", a, "BTC", now - H)

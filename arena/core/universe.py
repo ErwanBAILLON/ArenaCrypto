@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -40,7 +40,7 @@ def load_universe(path: str | Path | None = None) -> Universe:
     start = raw.get("history_start", "2024-01-01T00:00:00Z")
     ts = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        ts = ts.replace(tzinfo=UTC)
     return Universe(
         symbols=list(raw["symbols"]),
         binance_suffix=str(raw.get("binance_suffix", "USDT")),

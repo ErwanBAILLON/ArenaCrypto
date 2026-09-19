@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Arena · Leaderboard{% endblock %}
+{% block content %}
+<p class="muted">
+  Last decision bar: <strong>{{ board.last_bar|iso or 'none' }}</strong>
+  {% if board.last_bar %}({{ board.last_bar|ago(now) }}){% endif %}
+  {% if board.stale %}<span class="stale"> · STALE — no book row in the last 3h</span>{% endif %}
+</p>
+
+<div class="grid two">
+<section>
+  <h2>Leaderboard (30d)</h2>
+  <div class="card">
+  <table>
+    <thead><tr><th>competitor</th><th>status</th><th class="n">sharpe</th><th class="n">return</th><th class="n">mdd</th><th class="n">nav</th><th class="n">bars</th></tr></thead>
+    <tbody>
+    {% for r in board.rows %}
+    <tr>
+      <td><a href="/competitors/{{ r.id }}">{{ r.name }}</a> <span class="muted">{{ r.family }} v{{ r.version }}</span></td>
+      <td>{% if r.role != 'competitor' %}<span class="pill {{ r.role }}">{{ r.role }}</span>{% else %}<span class="pill {{ r.status }}">{{ r.status }}</span>{% endif %}</td>
+      <td class="n">{{ r.sharpe_30d|num }}</td>
+      <td class="n {{ 'pos' if r.ret_30d > 0 else ('neg' if r.ret_30d < 0) }}">{{ r.ret_30d|pct }}</td>
+      <td class="n">{{ r.mdd_30d|pct }}</td>
+      <td class="n">{{ r.nav|num(0) }}</td>
+      <td class="n muted">{{ r.bars_30d }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">no champion or challenger yet</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Null 95th pct Sharpe (30d): <strong>{{ board.null95|num }}</strong> — a competitor below this line has not left the null distribution.</p>
+  </div>
+</section>
+<section>
+  <h2>Allocator opinion</h2>
+  <div class="card">
+  {% if board.allocation %}
+  <table><tbody>
+  {% for name, w in board.allocation %}<tr><td>{{ name }}</td><td class="n">{{ (w * 100)|round(0)|int }}%</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<span class="muted">none</span>{% endif %}
+  <p class="muted">An opinion published to Telegram, never an order.</p>
+  </div>
+</section>
+</div>
+
+<h2>Equity curves — champions and benchmarks</h2>
+<div class="card">{{ chart|safe }}</div>
+{% endblock %}

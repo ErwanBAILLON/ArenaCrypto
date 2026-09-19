@@ -16,7 +16,7 @@ class Settings:
     max_alerts_per_day: int = 20
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             database_url=os.environ.get("DATABASE_URL", ""),
             telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),

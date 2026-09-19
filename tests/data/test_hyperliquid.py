@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 
 from arena.data import hyperliquid
 
-META = {"universe": [{"name": "BTC", "szDecimals": 5}, {"name": "ETH", "szDecimals": 4}, {"name": "SOL", "szDecimals": 2}]}
+META = {
+    "universe": [{"name": "BTC", "szDecimals": 5}, {"name": "ETH", "szDecimals": 4}, {"name": "SOL", "szDecimals": 2}]
+}
 CTXS = [
     {"funding": "0.0000125", "openInterest": "1234.5", "markPx": "65000.5", "oraclePx": "65000"},
     {"funding": "-0.00002", "openInterest": "9876.0", "markPx": "3500.25", "oraclePx": "3500"},
@@ -46,7 +48,7 @@ def test_funding_history():
 
     df = hyperliquid.funding_history(httpx.Client(transport=httpx.MockTransport(handler)), "BTC", t0)
     assert list(df.columns) == ["ts", "rate"]
-    assert df["ts"].iloc[0] == datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert df["ts"].iloc[0] == datetime(2024, 1, 1, tzinfo=UTC)
     assert str(df["ts"].dt.tz) == "UTC"
     assert df["rate"].tolist() == pytest.approx([0.00001, 0.0000125])
 

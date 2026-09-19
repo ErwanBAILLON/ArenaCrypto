@@ -7,8 +7,8 @@ transaction control to the caller. Frames are long-format with a tz-aware UTC
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 
 import pandas as pd
 import psycopg
@@ -44,7 +44,7 @@ def _frame(rows: list[dict], cols: list[str]) -> pd.DataFrame:
 
 def upsert_candles(conn: psycopg.Connection, exchange: str, df: pd.DataFrame) -> int:
     """Insert 1h candles (columns symbol, ts, open, high, low, close, volume); returns rows inserted."""
-    rows = [(exchange, s, TF, ts, o, h, l, c, v) for s, ts, o, h, l, c, v in _rows(df, CANDLE_COLS)]
+    rows = [(exchange, s, TF, ts, o, h, lo, c, v) for s, ts, o, h, lo, c, v in _rows(df, CANDLE_COLS)]
     return _insert_ignore(
         conn,
         "INSERT INTO candles (exchange, symbol, tf, ts, open, high, low, close, volume)"

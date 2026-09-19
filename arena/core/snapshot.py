@@ -8,10 +8,9 @@ cheap.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import datetime, timedelta
 
-import numpy as np
 import pandas as pd
 
 CANDLE_COLS = ["open", "high", "low", "close", "volume"]
@@ -91,7 +90,7 @@ class Snapshot:
         hl_funding: dict[str, float] | None = None,
         news: pd.DataFrame | None = None,
         macro_events: pd.DatetimeIndex | None = None,
-    ) -> "Snapshot":
+    ) -> Snapshot:
         """Build from long frames (columns include ``symbol`` and ``ts``).
 
         candles: symbol, ts, open, high, low, close, volume (1h only)
@@ -102,7 +101,11 @@ class Snapshot:
         if candles is not None and not candles.empty:
             for sym, g in candles.groupby("symbol"):
                 f = g.set_index("ts")[CANDLE_COLS].sort_index()
-                f.index = pd.DatetimeIndex(f.index).tz_convert("UTC") if f.index.tz else pd.DatetimeIndex(f.index).tz_localize("UTC")
+                f.index = (
+                    pd.DatetimeIndex(f.index).tz_convert("UTC")
+                    if f.index.tz
+                    else pd.DatetimeIndex(f.index).tz_localize("UTC")
+                )
                 f.index.name = "ts"
                 c1h[str(sym)] = f.astype(float)
         fund = {}
@@ -125,13 +128,18 @@ class Snapshot:
                 nw[str(sym)] = f
         return cls(ts, symbols, c1h, fund, oi, hl_funding, nw, macro_events)
 
-    def at(self, ts: datetime) -> "Snapshot":
+    def at(self, ts: datetime) -> Snapshot:
         """Cheap view of the same data at another decision time."""
         s = Snapshot.__new__(Snapshot)
         s.ts = _utc(ts)
         s.symbols = self.symbols
         s._c1h, s._funding, s._oi, s._hl, s._news, s._macro = (
-            self._c1h, self._funding, self._oi, self._hl, self._news, self._macro,
+            self._c1h,
+            self._funding,
+            self._oi,
+            self._hl,
+            self._news,
+            self._macro,
         )
         s._cache = {}
         return s

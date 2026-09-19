@@ -7,9 +7,10 @@ Sharpe of the next candidate accounts for it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 import psycopg
@@ -19,7 +20,7 @@ from arena.book.book import FeeModel
 from arena.competitors.base import REGISTRY
 from arena.core.types import Verdict
 from arena.judge.backtest import HistoryFrames
-from arena.judge.gate import GateConfig, evaluate, null_sharpe_threshold, run_null_distribution
+from arena.judge.gate import DEFAULT_GATE, GateConfig, evaluate, null_sharpe_threshold, run_null_distribution
 from arena.judge.walkforward import run_walkforward
 from arena.store import registry
 
@@ -33,20 +34,32 @@ class Admission:
     fold_sharpes: list[float]
 
 
-def null_threshold(history: HistoryFrames, symbols: list[str], start: datetime, end: datetime, fees: FeeModel, n: int = N_NULL) -> float:
+def null_threshold(
+    history: HistoryFrames, symbols: list[str], start: datetime, end: datetime, fees: FeeModel, n: int = N_NULL
+) -> float:
     """95th percentile Sharpe of seeded null_random runs over ``[start, end]``."""
     return null_sharpe_threshold(null_sharpes(history, symbols, start, end, fees, n))
 
 
-def null_sharpes(history: HistoryFrames, symbols: list[str], start: datetime, end: datetime, fees: FeeModel, n: int = N_NULL) -> list[float]:
+def null_sharpes(
+    history: HistoryFrames, symbols: list[str], start: datetime, end: datetime, fees: FeeModel, n: int = N_NULL
+) -> list[float]:
     from arena.judge.metrics import sharpe
 
     make_null = lambda seed: REGISTRY["null_random"]({"seed": seed}, seed=seed)  # noqa: E731
     return [sharpe(r.returns) for r in run_null_distribution(make_null, history, symbols, start, end, fees, n=n)]
 
 
-def cached_null_threshold(conn: psycopg.Connection, history: HistoryFrames, symbols: list[str], start: datetime, end: datetime,
-                          fees: FeeModel, n: int = N_NULL, q: float = 0.95) -> float:
+def cached_null_threshold(
+    conn: psycopg.Connection,
+    history: HistoryFrames,
+    symbols: list[str],
+    start: datetime,
+    end: datetime,
+    fees: FeeModel,
+    n: int = N_NULL,
+    q: float = 0.95,
+) -> float:
     """Null threshold reused within the same ISO week (the distribution barely moves day to day).
 
     The per-seed Sharpes are stored as a ``trials`` row (family ``null_random``,
@@ -59,15 +72,23 @@ def cached_null_threshold(conn: psycopg.Connection, history: HistoryFrames, symb
     key = {"start": pd.Timestamp(start).isoformat(), "week": week, "n": n, "symbols": sorted(symbols)}
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT metrics FROM trials WHERE family = 'null_random' AND kind = 'backtest' AND params = %s ORDER BY id DESC LIMIT 1",
+            "SELECT metrics FROM trials WHERE family = 'null_random' AND kind = 'backtest' AND params = %s "
+            "ORDER BY id DESC LIMIT 1",
             (Jsonb(key),),
         )
         row = cur.fetchone()
     if row and row["metrics"].get("sharpes"):
         return float(np.quantile(row["metrics"]["sharpes"], q))
     sharpes = null_sharpes(history, symbols, start, end, fees, n)
-    registry.add_trial(conn, "null_random", "backtest", key, {"sharpes": sharpes, "q95": float(np.quantile(sharpes, q))}, "admitted",
-                       notes="null distribution cache")
+    registry.add_trial(
+        conn,
+        "null_random",
+        "backtest",
+        key,
+        {"sharpes": sharpes, "q95": float(np.quantile(sharpes, q))},
+        "admitted",
+        notes="null distribution cache",
+    )
     conn.commit()
     return float(np.quantile(sharpes, q))
 
@@ -83,7 +104,7 @@ def admit(
     fees: FeeModel,
     null_thr: float,
     make_competitor: Callable[[], Any] | None = None,
-    cfg: GateConfig = GateConfig(),
+    cfg: GateConfig = DEFAULT_GATE,
     notes: str = "",
 ) -> Admission:
     """Walk-forward ``family`` with ``params`` and record the trial. Never raises on rejection."""

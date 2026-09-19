@@ -25,7 +25,12 @@ from arena.core.types import Decision, Target
 class XSMomentum(Competitor):
     family = "xs_momentum"
     default_params = {
-        "lookback_days": 30, "skip_days": 2, "k": 3, "band": 1, "rebalance_hours": 168, "long_only": False,
+        "lookback_days": 30,
+        "skip_days": 2,
+        "k": 3,
+        "band": 1,
+        "rebalance_hours": 168,
+        "long_only": False,
     }
 
     def __init__(self, params: dict | None = None, seed: int = 0):
@@ -71,15 +76,15 @@ class XSMomentum(Competitor):
         score = self._scores(snap)
         if score.empty:
             return {}
-        due = (
-            self._last_rebalance_ts is None
-            or snap.ts - self._last_rebalance_ts >= timedelta(hours=int(p["rebalance_hours"]))
+        due = self._last_rebalance_ts is None or snap.ts - self._last_rebalance_ts >= timedelta(
+            hours=int(p["rebalance_hours"])
         )
         desc = list(score.sort_values(ascending=False).index)
         if due:
             longs = self._select(desc, {s for s, d in self._prev.items() if d > 0}, k, band)
-            shorts = [] if p["long_only"] else self._select(
-                desc[::-1], {s for s, d in self._prev.items() if d < 0}, k, band)
+            shorts = (
+                [] if p["long_only"] else self._select(desc[::-1], {s for s, d in self._prev.items() if d < 0}, k, band)
+            )
             shorts = [s for s in shorts if s not in longs]
             self._prev = {**{s: 1 for s in longs}, **{s: -1 for s in shorts}}
             self._last_rebalance_ts = snap.ts

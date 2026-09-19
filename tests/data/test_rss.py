@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
 from arena.data import rss
 
-NOW = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 19, 12, 0, tzinfo=UTC)
 
 FEED_XML = """<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Test</title>
@@ -42,7 +42,7 @@ def test_fetch_feed_parses_dates_and_strips_html():
     assert a.source == "test" and a.url == "https://example.com/a"
     assert a.title == "Bitcoin & ETF approved"
     assert a.summary == "Big news today. More <here>."
-    assert a.published_at == datetime(2026, 9, 18, 6, 30, tzinfo=timezone.utc)  # +0200 normalised to UTC
+    assert a.published_at == datetime(2026, 9, 18, 6, 30, tzinfo=UTC)  # +0200 normalised to UTC
     assert a.fetched_at == NOW
     # missing date -> fallback to now ; long summary truncated
     assert b.published_at == NOW
@@ -57,8 +57,12 @@ def test_fetch_all_tolerates_failing_feed(caplog):
             raise httpx.ConnectError("down", request=request)
         return httpx.Response(200, text=FEED_XML)
 
-    feeds = [("good", "https://good/feed"), ("bad", "https://bad/feed"), ("boom", "https://boom/feed"),
-             ("good2", "https://good2/feed")]
+    feeds = [
+        ("good", "https://good/feed"),
+        ("bad", "https://bad/feed"),
+        ("boom", "https://boom/feed"),
+        ("good2", "https://good2/feed"),
+    ]
     with caplog.at_level("WARNING", logger="arena.data.rss"):
         arts = rss.fetch_all(_client(handler), NOW, feeds=feeds)
     assert sorted({a.source for a in arts}) == ["good", "good2"]

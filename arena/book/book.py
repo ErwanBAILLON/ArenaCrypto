@@ -44,7 +44,7 @@ class Book:
     positions: dict[str, tuple[Kind, float]] = field(default_factory=dict)
 
     @classmethod
-    def restore(cls, nav: float, positions: dict[str, tuple[Kind, float]], fees: FeeModel | None = None) -> "Book":
+    def restore(cls, nav: float, positions: dict[str, tuple[Kind, float]], fees: FeeModel | None = None) -> Book:
         return cls(nav=nav, fees=fees or FeeModel(), positions=dict(positions))
 
     @staticmethod
