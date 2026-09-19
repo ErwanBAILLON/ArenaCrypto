@@ -1,5 +1,7 @@
 # Arena
 
+[![CI](https://github.com/ErwanBAILLON/ArenaCrypto/actions/workflows/ci.yml/badge.svg)](https://github.com/ErwanBAILLON/ArenaCrypto/actions/workflows/ci.yml) · MIT · public home: <https://github.com/ErwanBAILLON/ArenaCrypto>
+
 Signal-only crypto research arena. Several competing models decide every hour on
 the same public market feed (Binance and Hyperliquid public endpoints, RSS news,
 a macro calendar), are scored forward on virtual books next to null models, are

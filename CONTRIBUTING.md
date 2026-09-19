@@ -86,3 +86,19 @@ CI runs exactly `ruff check`, `ruff format --check` and `pytest` (see
 Open an issue with the command you ran, the version (`pyproject.toml`), and, for judge/gate
 questions, the `trials` row (`metrics` and `verdict`). For data adapter issues include the endpoint
 and the raw response shape; every adapter is tested against a mock HTTP transport in `tests/data/`.
+
+## Where the code lives
+
+The public repository is <https://github.com/ErwanBAILLON/ArenaCrypto> (issues and
+pull requests go there). The author also deploys from a private Gitea mirror whose
+CI builds the container image; that is an implementation detail of one
+deployment, not a requirement to run Arena.
+
+## Secrets policy
+
+Nothing that can be used to act on a market or reach a private system is ever
+committed: no exchange keys (Arena needs none), no bot tokens, no database URLs
+with passwords, no chat ids. Configuration that must be private comes from the
+environment (`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Before
+opening a pull request, run a secret scan on your diff (for example
+`gitleaks detect --no-git` or `git diff | grep -iE "token|password|secret"`).
