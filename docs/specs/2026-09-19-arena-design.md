@@ -307,3 +307,20 @@ confirmation tool for finalists (future work).
 - FinBERT/CryptoBERT scorer as `scorer_version` 2.
 - Fine-tuning the news scorer once ≥ 3 months of forward labels exist.
 - On-chain flows (public explorers) as a data source.
+
+## 16. Amendments (2026-09-19, evening)
+
+- **Explanation layer** (`arena.explain`): every family has a French card (what it
+  does, what it looks at, when it decides, caveats); every target's `reason`
+  renders as one sentence with the live values; gate metrics render as one
+  sentence per criterion. The dashboard and Telegram share these texts.
+- **Dashboard for humans**: the live page answers "who speaks, what do they hold
+  and why, what changed since yesterday, what are the models based on, is the
+  system alive"; money is shown in euros on the virtual 10 000 € against
+  "hold BTC" and "do nothing".
+- **Random-window robustness by regime** (§8 step 7) is part of the gate.
+- **Two arenas**: the bar size, exchange and reference symbol belong to the
+  `Universe`. The classic-markets arena uses daily Yahoo Finance bars for ETFs
+  and FX; no funding, hence no carry; benchmark is holding the reference asset
+  (SPY). Competitors carry a `universe` column; ticks, books, nulls and founders
+  are per universe. Names outside the crypto arena are suffixed (`_classic`).

@@ -27,7 +27,9 @@ def _ms(ts: datetime) -> int:
 def ingest_market(
     conn: psycopg.Connection, client: httpx.Client, universe: Universe, now: datetime, since: datetime | None = None
 ) -> dict[str, int]:
-    """Candles, funding and open interest for every symbol, from the last stored bar (or ``since``)."""
+    """Market data of the universe's exchange for every symbol, from the last stored bar (or ``since``)."""
+    if universe.exchange == "yahoo":
+        return ingest_yahoo(conn, client, universe, now)
     counts = {"candles": 0, "funding": 0, "oi": 0}
     for sym in universe.symbols:
         bsym = universe.binance_symbol(sym)

@@ -56,7 +56,9 @@ def _ctx():
     settings = Settings.from_env()
     if not settings.database_url:
         raise typer.BadParameter("DATABASE_URL is required")
-    return settings, connect(settings.database_url), load_universe(settings.universe_path)
+    conn = connect(settings.database_url)
+    run_migrations(conn)  # idempotent and cheap: every command runs on a current schema
+    return settings, conn, load_universe(settings.universe_path)
 
 
 def _now() -> datetime:
@@ -134,6 +136,10 @@ def _history_and_null(conn, universe, end: datetime):
     from arena.runner.tick import fees_of
 
     history = load_history(conn, universe, universe.history_start, end)
+    if history.candles.empty:
+        raise typer.Exit(
+            code=typer.echo(f"no candles stored for universe {universe.name}: run `arena backfill` first") or 2
+        )
     fees = fees_of(universe)
     start = pd.Timestamp(universe.history_start)
     thr = admission.cached_null_threshold(

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-19
+
+### Added
+- French explanation layer (`arena.explain`): what each family does, what it looks at, why it holds each position, gate verdicts in words.
+- Dashboard rewritten for a non-technical reader: live page (who speaks, what changed in 24h, data sources and freshness, activity feed), model cards, family overview, euros against "hold BTC" and "do nothing".
+- Telegram in French with the why behind every message; digest in four sections.
+- Random-window robustness test by market regime (bull / bear / range) as a gate criterion, with French rendering.
+- Second arena for classic markets (ETFs, FX) on daily Yahoo Finance bars: universe config, ingestion, CronJobs, bootstrap job; bar size is now a property of the universe.
+- `tick_runs` activity log; explicit zero-weight rows on full exits.
+
+### Changed
+- Every CLI command applies pending migrations before running.
+
+
 ## [0.2.1] - 2026-09-19
 
 ### Changed

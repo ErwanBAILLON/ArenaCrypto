@@ -294,6 +294,14 @@ the chart expects a Secret holding a single `users` key (htpasswd lines, e.g.
 `openssl passwd -apr1`), projected from `web.basicAuth.vaultPath`; Traefik rejects
 multi-key secrets for BasicAuth.
 
+## Two arenas: crypto and classic markets
+
+`config/universe.yaml` is the crypto arena (Binance USDT perpetuals, 1h bars,
+funding). `config/universe-classic.yaml` is the classic-markets arena (ETFs and
+FX from Yahoo Finance, daily bars, no funding so no carry family). Point any
+command at a universe with `UNIVERSE_PATH`; competitors, null models and books
+are kept per universe, the dashboard and the digest show both.
+
 ## Known limitations
 
 - **Carry is idealised.** A carry position is modelled as delta-neutral long
