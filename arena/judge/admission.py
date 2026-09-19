@@ -1,4 +1,4 @@
-"""Entry gate as a single call: walk-forward + null distribution + trial record.
+"""Entry gate as a single call: walk-forward + random-window robustness + null distribution + trial record.
 
 Used by ``bootstrap`` (founding families) and by the challenger loop (every
 optimisation candidate). Every call adds a row to ``trials`` so the deflated
@@ -7,11 +7,13 @@ Sharpe of the next candidate accounts for it.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import psycopg
 from psycopg.types.json import Jsonb
@@ -21,10 +23,28 @@ from arena.competitors.base import REGISTRY
 from arena.core.types import Verdict
 from arena.judge.backtest import HistoryFrames
 from arena.judge.gate import DEFAULT_GATE, GateConfig, evaluate, null_sharpe_threshold, run_null_distribution
+from arena.judge.robustness import run_robustness
 from arena.judge.walkforward import run_walkforward
 from arena.store import registry
 
 N_NULL = 50
+N_ROBUSTNESS = 120
+
+
+def _jsonable(x: Any) -> Any:
+    """Plain JSON types for the ``trials.metrics`` column: numpy scalars -> Python, NaN -> None."""
+    if isinstance(x, dict):
+        return {str(k): _jsonable(v) for k, v in x.items()}
+    if isinstance(x, list | tuple):
+        return [_jsonable(v) for v in x]
+    if isinstance(x, np.bool_ | bool):
+        return bool(x)
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating | float):
+        f = float(x)
+        return None if math.isnan(f) or math.isinf(f) else f
+    return x
 
 
 @dataclass
@@ -106,18 +126,24 @@ def admit(
     make_competitor: Callable[[], Any] | None = None,
     cfg: GateConfig = DEFAULT_GATE,
     notes: str = "",
+    robustness_n: int = N_ROBUSTNESS,
 ) -> Admission:
-    """Walk-forward ``family`` with ``params`` and record the trial. Never raises on rejection."""
+    """Walk-forward ``family`` with ``params`` and record the trial. Never raises on rejection.
+
+    ``robustness_n`` random windows (spec §8 step 7) are backtested with the
+    same competitor factory; ``0`` skips the step and its criterion.
+    """
     n_trials = registry.count_trials(conn, family) + 1
     trial_id = registry.add_trial(conn, family, "walkforward", params, {}, None, notes=notes)
     conn.commit()
     make = make_competitor or (lambda: REGISTRY[family](params))
     folds = run_walkforward(make, history, symbols, start, end, fees)
-    verdict = evaluate(folds, null_thr, n_trials, cfg)
+    rob = run_robustness(make, history, symbols, start, end, fees, n=robustness_n) if robustness_n > 0 else None
+    verdict = evaluate(folds, null_thr, n_trials, cfg, robustness=rob)
     from arena.judge.metrics import sharpe
 
     fold_sharpes = [sharpe(res.returns) for _, res in folds]
-    metrics = {**verdict.metrics, "fold_sharpes": fold_sharpes, "failed": verdict.failed}
+    metrics = _jsonable({**verdict.metrics, "fold_sharpes": fold_sharpes, "failed": verdict.failed})
     registry.finish_trial(conn, trial_id, metrics, "admitted" if verdict.admitted else "rejected")
     conn.commit()
     return Admission(verdict=verdict, trial_id=trial_id, fold_sharpes=fold_sharpes)

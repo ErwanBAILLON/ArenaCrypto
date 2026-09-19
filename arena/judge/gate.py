@@ -8,7 +8,11 @@ A competitor is admitted only if **all** criteria hold:
 * ``dsr``: Deflated Sharpe Ratio > 0.90 given the number of trials for the family;
 * ``bootstrap_p``: stationary block bootstrap p-value of ``Sharpe <= 0`` below 0.10;
 * ``max_drawdown``: below 30 %;
-* ``min_decisions``: at least 30 bars with a non-flat target.
+* ``min_decisions``: at least 30 bars with a non-flat target;
+* ``robust_regimes`` (only when a robustness dict is supplied, see
+  ``arena.judge.robustness``): at least ``min_regimes_positive`` market regimes
+  (among those with >= ``MIN_REGIME_WINDOWS`` random windows) show a win rate
+  >= ``min_regime_win_rate``.
 """
 
 from __future__ import annotations
@@ -39,9 +43,27 @@ class GateConfig:
     max_drawdown: float = 0.30
     min_decisions: int = 30
     null_quantile: float = 0.95
+    min_regimes_positive: int = 2
+    min_regime_win_rate: float = 0.5
 
 
 DEFAULT_GATE = GateConfig()
+MIN_REGIME_WINDOWS = 5  # a regime with fewer random windows is not judged
+
+
+def robust_regimes(robustness: dict[str, Any], cfg: GateConfig = DEFAULT_GATE) -> tuple[bool, int, int]:
+    """``(passed, regimes_positive, regimes_judged)`` for the ``robust_regimes`` criterion.
+
+    A regime counts as judged when it has at least ``MIN_REGIME_WINDOWS`` windows,
+    and as positive when its win rate is at least ``cfg.min_regime_win_rate``.
+    """
+    rates = robustness.get("win_rate_by_regime") or {}
+    counts = robustness.get("n_by_regime") or {}
+    judged = [r for r, n in counts.items() if int(n or 0) >= MIN_REGIME_WINDOWS and rates.get(r) is not None]
+    positive = sum(1 for r in judged if float(rates[r]) >= cfg.min_regime_win_rate)
+    # a history that only contains one or two regimes cannot demand more than it has
+    required = min(cfg.min_regimes_positive, len(judged)) if judged else cfg.min_regimes_positive
+    return positive >= required, positive, len(judged)
 
 
 def null_sharpe_threshold(null_results: list[BacktestResult], q: float = 0.95) -> float:
@@ -92,11 +114,16 @@ def evaluate(
     null_threshold: float,
     n_trials: int,
     cfg: GateConfig = DEFAULT_GATE,
+    robustness: dict[str, Any] | None = None,
 ) -> Verdict:
     """Concatenate the test-window returns of every fold and apply the §8 criteria.
 
     The DSR is computed on the per-period Sharpe ``mean/std`` of the
     concatenated series with its sample skew/kurtosis and ``T = len(r)``.
+    When ``robustness`` (output of ``robustness.run_robustness``) is given, the
+    ``robust_regimes`` criterion is added, the dict is stored under
+    ``metrics["robustness"]`` (with the gate's reading of it) and
+    ``win_rate_overall`` is copied to the top level.
     """
     series = [res.returns for _, res in fold_results if len(res.returns)]
     r = pd.concat(series).sort_index() if series else pd.Series(dtype=float)
@@ -106,7 +133,7 @@ def evaluate(
     fold_returns = [m.total_return(res.returns) for _, res in fold_results]
     folds_positive_frac = float(np.mean([x > 0 for x in fold_returns])) if fold_returns else 0.0
 
-    metrics: dict[str, float] = {
+    metrics: dict[str, Any] = {
         "sharpe": m.sharpe(r),
         "sortino": m.sortino(r),
         "max_drawdown": m.max_drawdown(r),
@@ -128,5 +155,17 @@ def evaluate(
         "max_drawdown": metrics["max_drawdown"] < cfg.max_drawdown,
         "min_decisions": metrics["decisions"] >= cfg.min_decisions,
     }
+    if robustness is not None:
+        passed, positive, judged = robust_regimes(robustness, cfg)
+        metrics["robustness"] = {
+            **robustness,
+            "regimes_positive": positive,
+            "regimes_judged": judged,
+            "n_regimes_required": cfg.min_regimes_positive,
+            "min_regime_win_rate": cfg.min_regime_win_rate,
+            "passed": passed,
+        }
+        metrics["win_rate_overall"] = float(robustness.get("win_rate_overall", 0.0))
+        checks["robust_regimes"] = passed
     failed = [name for name, ok in checks.items() if not ok]
     return Verdict(admitted=not failed, metrics=metrics, failed=failed)

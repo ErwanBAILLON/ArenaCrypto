@@ -84,3 +84,46 @@ def explain_status(
 def money(delta: float, nav0: float = 10_000.0) -> str:
     """A P&L fraction as euros on the virtual book."""
     return f"{delta * nav0:+,.0f} €".replace(",", " ")
+
+
+REGIME_FR = {"bull": "haussier", "bear": "baissier", "range": "sans tendance"}
+
+
+def explain_robustness(rob: dict) -> list[str]:
+    """The random-window robustness test (spec §8 step 7) in plain French."""
+    if not rob:
+        return []
+    n = int(rob.get("n_windows", 0) or 0)
+    lo = max(1, round(int(rob.get("min_days", 60)) / 30))
+    hi = max(lo, round(int(rob.get("max_days", 180)) / 30))
+    lines: list[str] = []
+    wr = rob.get("win_rate_overall")
+    head = f"Sur {n} périodes de {lo} à {hi} mois tirées au hasard"
+    lines.append(head + (f" : gagne dans {float(wr) * 100:.0f} % des cas." if wr is not None else "."))
+    rates = rob.get("win_rate_by_regime") or {}
+    counts = rob.get("n_by_regime") or {}
+    parts = []
+    for reg, name in REGIME_FR.items():
+        k = int(counts.get(reg, 0) or 0)
+        r = rates.get(reg)
+        if k == 0 or r is None:
+            parts.append(f"{name} : aucune période")
+        else:
+            unit = "périodes" if reg == "bull" else ""
+            parts.append(f"{name} {float(r) * 100:.0f} % ({k}{(' ' + unit) if unit else ''})")
+    if parts:
+        lines.append("Par type de marché : " + ", ".join(parts) + ".")
+    med, worst = rob.get("median_sharpe"), rob.get("worst_return")
+    if med is not None and worst is not None:
+        lines.append(
+            f"Rendement ajusté du risque médian {float(med):.2f} ; pire période : {float(worst) * 100:+.1f} %."
+        )
+    if "regimes_positive" in rob:
+        pos, need = int(rob["regimes_positive"]), int(rob.get("n_regimes_required", 2))
+        judged = int(rob.get("regimes_judged", len([c for c in counts.values() if c])))
+        thr = float(rob.get("min_regime_win_rate", 0.5)) * 100
+        mark = "" if rob.get("passed") is None else ("✓ " if rob["passed"] else "✗ ")
+        lines.append(
+            f"{mark}Tient dans {pos} types de marché sur {judged} (il en faut {need}, à au moins {thr:.0f} % de périodes gagnantes)."
+        )
+    return lines

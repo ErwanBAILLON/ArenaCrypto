@@ -170,11 +170,31 @@ row with the verdict. Steps:
    trials recorded for this family in `trials`.
 6. **Stationary block bootstrap** of the return series (block 24 bars,
    1000 draws) → p-value of Sharpe > 0.
+7. **Random-window robustness** (`arena.judge.robustness`): 120 windows of
+   60 to 180 days drawn uniformly at random inside the history (seeded, so
+   reproducible). A fresh competitor is backtested on each window (warm-up
+   uses the bars before the window, as in walk-forward). Each window is
+   labelled by the BTC return over it: `bull` > +10 %, `bear` < -10 %, else
+   `range`. Reported: win rate overall (total return > 0) and per regime,
+   window count per regime, median Sharpe, median and worst return. This is
+   the "does it hold in every season" check: walk-forward folds are few and
+   contiguous, so one long bull run can carry a model through them.
 
 Verdict `admitted` requires all of: net return > 0 on ≥ 2/3 of folds;
 Sharpe > null 95th percentile; DSR > 0.90; bootstrap p < 0.10; max drawdown
-< 30 %; ≥ 30 decisions. Otherwise `rejected`, with the failing criteria listed.
+< 30 %; ≥ 30 decisions; **robust regimes**: at least 2 regimes, among those
+with ≥ 5 windows, have a win rate ≥ 50 % (`GateConfig.min_regimes_positive`,
+`min_regime_win_rate`). Otherwise `rejected`, with the failing criteria
+listed. The robustness dict is stored in the trial metrics
+(`metrics.robustness`) and rendered in French by `explain_robustness`.
 Null models and benchmarks skip the gate.
+
+Cost of step 7: 120 windows × ~120 days × 24 bars ≈ 350 k bar-decisions per
+competitor; measured ≈ 0.8 min for `trend_ts` on 8 symbols with 2 forked
+workers (`ARENA_WORKERS`), i.e. roughly +25 % on a walk-forward evaluation.
+`admit(..., robustness_n=0)` disables it (the criterion is then not applied).
+Caveat: a history that contains fewer than 2 regimes with ≥ 5 windows can
+never satisfy the criterion; lower `min_regimes_positive` in that case.
 
 **Not gated by backtest**: the `news` family (its scores can only exist
 forward). It enters directly as `challenger` and is judged only in the arena.
