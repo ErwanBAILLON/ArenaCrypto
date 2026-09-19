@@ -38,14 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Read-only web dashboard (`arena web`, FastAPI + server-rendered HTML, inline SVG equity curves): leaderboard, competitor detail, alerts, trials, `/healthz`, `/api/leaderboard.json`. Helm Deployment + IngressRoute with optional Traefik BasicAuth.
-- `HoldingCompetitor` tests, GPL-3.0 licence, CONTRIBUTING, docker-compose, GitHub Actions CI, ruff lint and format in both CIs.
+- `HoldingCompetitor` tests, MIT licence, CONTRIBUTING, docker-compose, GitHub Actions CI, ruff lint and format in both CIs.
 
 ### Changed
 - Null distribution runs in forked workers (`ARENA_WORKERS`) and is cached per ISO week in `trials`.
 
 
 ### Added
-- GPL-3.0 licence, contributor guide, this changelog, `.editorconfig`.
+- MIT licence, contributor guide, this changelog, `.editorconfig`.
 - `docker-compose.yml` for local development (Postgres 16 + the Arena image).
 - GitHub Actions CI (`.github/workflows/ci.yml`): ruff + pytest against a Postgres 16 service.
 - `ruff` configuration in `pyproject.toml` and a lint step in the Gitea workflow.
