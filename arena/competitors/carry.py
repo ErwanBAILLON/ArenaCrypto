@@ -43,9 +43,10 @@ def rank_funding(snap: Snapshot, lookback_days: int) -> list[tuple[str, float]]:
 @register
 class Carry(HoldingCompetitor):
     family = "carry"
+    rebalance_weekday = 0  # weekly (Monday 00:00 UTC): funding ranks near the threshold swap daily, each swap costs both legs
     # min_rate 0.00003 per 8h ≈ 3.3 %/yr: below it fees eat the carry. Held symbols
     # keep their slot down to exit_ratio × min_rate (hysteresis against churn).
-    default_params = {"lookback_days": 3, "k": 3, "min_rate": 0.00003, "max_weight": 0.34, "exit_ratio": 0.5}
+    default_params = {"lookback_days": 14, "k": 5, "min_rate": 0.00005, "max_weight": 0.34, "exit_ratio": 0.3, "rank_band": 5}
 
     def warmup_bars(self) -> int:
         return int(self.params["lookback_days"]) * 24
@@ -56,7 +57,9 @@ class Carry(HoldingCompetitor):
         exit_rate = min_rate * float(self.params["exit_ratio"])
         ranked = rank_funding(snap, int(self.params["lookback_days"]))
         held = set(self._held)
-        keep = [(s, m) for s, m in ranked if s in held and m >= exit_rate]
+        rank_of = {s: i for i, (s, _) in enumerate(ranked)}
+        # held symbols keep their slot while funding stays above exit_rate and rank within k + rank_band
+        keep = [(s, m) for s, m in ranked if s in held and m >= exit_rate and rank_of[s] < k + int(self.params.get("rank_band", 2))]
         new = [(s, m) for s, m in ranked if s not in held and m >= min_rate]
         picks = (keep + new)[:k]
         if not picks:

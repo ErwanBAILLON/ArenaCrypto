@@ -71,6 +71,7 @@ class HoldingCompetitor(Competitor):
     """
 
     rebalance_hour: ClassVar[int] = 0
+    rebalance_weekday: ClassVar[int | None] = None  # None = daily; 0 = Mondays only, etc.
     band: ClassVar[float] = 0.10
 
     def __init__(self, params: dict[str, Any] | None = None, seed: int = 0):
@@ -83,6 +84,8 @@ class HoldingCompetitor(Competitor):
 
     def decide(self, snap: Snapshot) -> Decision:
         if self._held_ts is not None and snap.ts.hour != self.rebalance_hour:
+            return dict(self._held)
+        if self._held_ts is not None and self.rebalance_weekday is not None and snap.ts.weekday() != self.rebalance_weekday:
             return dict(self._held)
         if self._held_ts is not None and self._held_ts == snap.ts.isoformat():
             return dict(self._held)

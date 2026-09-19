@@ -11,9 +11,11 @@ Space = Callable[[optuna.Trial], dict[str, Any]]
 
 def carry(t: optuna.Trial) -> dict[str, Any]:
     return {
-        "k": t.suggest_int("k", 1, 5),
-        "min_rate": t.suggest_float("min_rate", 0.0, 0.0005),
-        "lookback_days": t.suggest_int("lookback_days", 3, 21),
+        "k": t.suggest_int("k", 2, 6),
+        "min_rate": t.suggest_float("min_rate", 0.0, 0.0002),
+        "lookback_days": t.suggest_int("lookback_days", 3, 30),
+        "exit_ratio": t.suggest_float("exit_ratio", 0.0, 0.8),
+        "rank_band": t.suggest_int("rank_band", 0, 10),
     }
 
 
