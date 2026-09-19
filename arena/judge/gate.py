@@ -13,6 +13,10 @@ A competitor is admitted only if **all** criteria hold:
 
 from __future__ import annotations
 
+import multiprocessing
+import os
+from concurrent.futures import ProcessPoolExecutor
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
@@ -44,6 +48,14 @@ def null_sharpe_threshold(null_results: list[BacktestResult], q: float = 0.95) -
     return float(np.quantile([m.sharpe(res.returns) for res in null_results], q))
 
 
+_NULL_JOB: dict[str, Any] = {}
+
+
+def _null_worker(seed: int) -> BacktestResult:
+    j = _NULL_JOB
+    return run(j["make_null"](seed), j["history"], j["symbols"], j["start"], j["end"], j["fees"])
+
+
 def run_null_distribution(
     make_null: Callable[[int], Any],
     history: HistoryFrames,
@@ -52,9 +64,24 @@ def run_null_distribution(
     end: datetime | str,
     fees: FeeModel,
     n: int = 200,
+    workers: int | None = None,
 ) -> list[BacktestResult]:
-    """Backtest ``make_null(seed)`` for ``seed in range(n)`` on the same period."""
-    return [run(make_null(seed), history, symbols, start, end, fees) for seed in range(n)]
+    """Backtest ``make_null(seed)`` for ``seed in range(n)`` on the same period.
+
+    Runs are independent, so they are spread over ``workers`` forked processes
+    (default: ``ARENA_WORKERS`` env, else 1). Fork shares the history frames
+    copy-on-write; nothing is pickled but the seed and the result.
+    """
+    workers = workers or int(os.environ.get("ARENA_WORKERS", "1"))
+    if workers <= 1 or n <= 1:
+        return [run(make_null(seed), history, symbols, start, end, fees) for seed in range(n)]
+    _NULL_JOB.update(make_null=make_null, history=history, symbols=symbols, start=start, end=end, fees=fees)
+    try:
+        ctx = multiprocessing.get_context("fork")
+        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
+            return list(pool.map(_null_worker, range(n)))
+    finally:
+        _NULL_JOB.clear()
 
 
 def evaluate(

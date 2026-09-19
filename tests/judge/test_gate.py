@@ -95,3 +95,34 @@ def test_evaluate_edge_cases():
     v = evaluate([(fold, empty)], null_threshold=0.0, n_trials=1)
     assert not v.admitted and "min_decisions" in v.failed and v.metrics["sharpe"] == 0.0
     assert null_sharpe_threshold([]) == 0.0
+
+
+def test_null_distribution_parallel_matches_serial():
+    import numpy as np
+    import pandas as pd
+
+    from arena.book.book import FeeModel
+    from arena.judge.backtest import HistoryFrames
+    from arena.judge.gate import run_null_distribution
+    from tests.conftest import make_candles
+
+    class Coin:
+        def __init__(self, seed):
+            self.seed = seed
+
+        def warmup_bars(self):
+            return 1
+
+        def decide(self, snap):
+            from arena.core.types import Target
+
+            rng = np.random.default_rng(self.seed + int(snap.ts.timestamp()) // (3600 * 168))
+            return {"BTC": Target(float(rng.uniform(-0.5, 0.5)))}
+
+    c = make_candles(["BTC"], bars=24 * 40)
+    h = HistoryFrames(candles=c)
+    end = c["ts"].max(); start = end - pd.Timedelta(days=10)
+    serial = run_null_distribution(Coin, h, ["BTC"], start, end, FeeModel(), n=4, workers=1)
+    parallel = run_null_distribution(Coin, h, ["BTC"], start, end, FeeModel(), n=4, workers=2)
+    for a, b in zip(serial, parallel):
+        pd.testing.assert_series_equal(a.returns, b.returns)

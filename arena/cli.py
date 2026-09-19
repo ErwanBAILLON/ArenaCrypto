@@ -113,7 +113,7 @@ def _history_and_null(conn, universe, end: datetime):
     history = load_history(conn, universe, universe.history_start, end)
     fees = fees_of(universe)
     start = pd.Timestamp(universe.history_start)
-    thr = admission.null_threshold(history, universe.symbols, start, end, fees)
+    thr = admission.cached_null_threshold(conn, history, universe.symbols, start, end, fees)
     return history, fees, start, thr
 
 

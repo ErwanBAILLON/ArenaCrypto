@@ -69,3 +69,26 @@ def test_models_latest(conn):
         cur.execute("UPDATE models SET trained_at = trained_at + interval '1 minute' WHERE id = %s", (m2,))
     artifact, metrics = repo.latest_model(conn, cid)
     assert artifact == b"second" and metrics == {"auc": 0.61}
+
+
+def test_cached_null_threshold_reuses_trial(conn, monkeypatch):
+    import pandas as pd
+
+    from arena.book.book import FeeModel
+    from arena.judge import admission
+    from arena.judge.backtest import HistoryFrames
+    from tests.conftest import make_candles
+
+    c = make_candles(["BTC"], bars=24 * 20)
+    h = HistoryFrames(candles=c)
+    end = c["ts"].max(); start = end - pd.Timedelta(days=5)
+    calls = {"n": 0}
+
+    def fake_sharpes(*a, **k):
+        calls["n"] += 1
+        return [0.1, 0.2, 0.3, 0.4]
+
+    monkeypatch.setattr(admission, "null_sharpes", fake_sharpes)
+    t1 = admission.cached_null_threshold(conn, h, ["BTC"], start, end, FeeModel(), n=4)
+    t2 = admission.cached_null_threshold(conn, h, ["BTC"], start, end, FeeModel(), n=4)
+    assert t1 == t2 and calls["n"] == 1
