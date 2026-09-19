@@ -32,7 +32,7 @@ resources:
     requests: { cpu: 200m, memory: 512Mi }
     limits: { cpu: "1", memory: 1Gi }
   heavy:
-    requests: { cpu: 500m, memory: 1Gi }
+    requests: { cpu: 400m, memory: 640Mi }   # keep tick+news+challenger+retrain under the 2Gi namespace quota
     limits: { cpu: "2", memory: 2Gi }
 
 bootstrap:

@@ -21,6 +21,7 @@ from arena.telegram import sender, templates
 app = typer.Typer(add_completion=False, help="Signal-only crypto research arena.")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("arena")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 FOUNDERS = ["carry", "trend_ts", "xs_momentum", "regime", "meta_label"]
 NULLS = [

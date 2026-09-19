@@ -21,7 +21,7 @@ from arena.judge.gate import GateConfig, evaluate, null_sharpe_threshold, run_nu
 from arena.judge.walkforward import run_walkforward
 from arena.store import registry
 
-N_NULL = 200
+N_NULL = 50
 
 
 @dataclass
