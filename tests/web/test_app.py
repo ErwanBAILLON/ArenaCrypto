@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
+
+TestClient = pytest.importorskip("fastapi.testclient", reason="web extra not installed").TestClient
 
 from arena.core.types import Alert, BookRow, CompetitorSpec, Target
 from arena.settings import Settings

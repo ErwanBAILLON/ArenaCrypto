@@ -1,6 +1,3 @@
-import pytest
-
-pytest.importorskip("fastapi", reason="web extra not installed")
 """svg.line_chart: valid XML, one path per series, deterministic."""
 
 from __future__ import annotations
