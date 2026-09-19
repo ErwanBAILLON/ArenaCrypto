@@ -350,4 +350,4 @@ tests/          pytest; Postgres-backed tests need PG_TEST_URL
 
 ## License
 
-MIT, see `LICENSE`.
+GPL-3.0-or-later, see `LICENSE`.
