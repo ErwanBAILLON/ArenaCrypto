@@ -26,7 +26,7 @@ def test_positive_funding_on_eth_only(candles):
 
 
 def test_below_min_rate_is_flat(candles):
-    snap = _snap(candles, make_funding(candles=candles, rate=0.00005))
+    snap = _snap(candles, make_funding(candles=candles, rate=0.00001))
     assert Carry().decide(snap) == {}
 
 

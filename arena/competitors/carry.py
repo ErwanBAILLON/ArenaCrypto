@@ -11,7 +11,7 @@ from datetime import timedelta
 
 import numpy as np
 
-from arena.competitors.base import Competitor, cap_gross, register
+from arena.competitors.base import HoldingCompetitor, cap_gross, register
 from arena.core.snapshot import Snapshot
 from arena.core.types import Decision, Target
 
@@ -41,18 +41,24 @@ def rank_funding(snap: Snapshot, lookback_days: int) -> list[tuple[str, float]]:
 
 
 @register
-class Carry(Competitor):
+class Carry(HoldingCompetitor):
     family = "carry"
-    default_params = {"lookback_days": 3, "k": 3, "min_rate": 0.0001, "max_weight": 0.34}
+    # min_rate 0.00003 per 8h ≈ 3.3 %/yr: below it fees eat the carry. Held symbols
+    # keep their slot down to exit_ratio × min_rate (hysteresis against churn).
+    default_params = {"lookback_days": 3, "k": 3, "min_rate": 0.00003, "max_weight": 0.34, "exit_ratio": 0.5}
 
     def warmup_bars(self) -> int:
         return int(self.params["lookback_days"]) * 24
 
-    def decide(self, snap: Snapshot) -> Decision:
+    def compute(self, snap: Snapshot) -> Decision:
         k = int(self.params["k"])
         min_rate = float(self.params["min_rate"])
+        exit_rate = min_rate * float(self.params["exit_ratio"])
         ranked = rank_funding(snap, int(self.params["lookback_days"]))
-        picks = [(s, m) for s, m in ranked if m >= min_rate][:k]
+        held = set(self._held)
+        keep = [(s, m) for s, m in ranked if s in held and m >= exit_rate]
+        new = [(s, m) for s, m in ranked if s not in held and m >= min_rate]
+        picks = (keep + new)[:k]
         if not picks:
             return {}
         w = min(float(self.params["max_weight"]), 1.0 / k)

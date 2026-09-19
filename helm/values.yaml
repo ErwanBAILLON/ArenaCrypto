@@ -1,6 +1,6 @@
 image:
   repository: git.ebaillon.fr/bots/arena
-  tag: "0.1.0"
+  tag: "0.1.1"
   pullPolicy: IfNotPresent
 
 # Namespace already exists (PSA restricted, default-deny, allow-dns,

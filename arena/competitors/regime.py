@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from arena.competitors.base import Competitor, cap_gross, register
+from arena.competitors.base import HoldingCompetitor, cap_gross, register
 from arena.competitors.carry import rank_funding
 from arena.competitors.features import ema, realised_vol
 from arena.core.snapshot import Snapshot
@@ -46,14 +46,14 @@ def regime_label(snap: Snapshot, symbol: str = "BTC", params: dict[str, Any] | N
 
 
 @register
-class Regime(Competitor):
+class Regime(HoldingCompetitor):
     family = "regime"
     default_params = DEFAULT_PARAMS
 
     def warmup_bars(self) -> int:
         return warmup_bars(self.params)
 
-    def decide(self, snap: Snapshot) -> Decision:
+    def compute(self, snap: Snapshot) -> Decision:
         p = self.params
         label = regime_label(snap, "BTC", p)
         reason = {"regime": label}

@@ -23,13 +23,19 @@ class NullCash(Competitor):
 
 @register
 class NullRandom(Competitor):
-    """Coin-flip positions, deterministic per (seed, bar) so runs are replayable."""
+    """Coin-flip positions redrawn once per ``hold_hours`` (default a week).
+
+    Deterministic per (seed, week bucket) so runs are replayable. Weekly
+    holding keeps turnover realistic: an hourly coin flip pays ~700 % of NAV a
+    year in fees and would make any competitor look good against it.
+    """
 
     family = "null_random"
-    default_params = {"scale": 0.3, "p_trade": 0.3}
+    default_params = {"scale": 0.3, "p_trade": 0.3, "hold_hours": 168}
 
     def decide(self, snap: Snapshot) -> Decision:
-        rng = np.random.default_rng(self.seed + int(snap.ts.timestamp()) // 3600)
+        bucket = int(snap.ts.timestamp()) // (3600 * int(self.params["hold_hours"]))
+        rng = np.random.default_rng(self.seed * 1_000_003 + bucket)
         out: Decision = {}
         for sym in snap.symbols:
             if not snap.has(sym, self.warmup_bars()):

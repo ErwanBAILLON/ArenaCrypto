@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from arena.competitors.base import Competitor, cap_gross, register
+from arena.competitors.base import HoldingCompetitor, cap_gross, register
 from arena.competitors.features import last_atr, last_ema, last_realised_vol, pct_return
 from arena.core.snapshot import Snapshot
 from arena.core.types import Decision, Target
@@ -19,7 +19,7 @@ CONVICTION_SCALE = 0.20  # |30d return| that counts as full conviction
 
 
 @register
-class TrendTS(Competitor):
+class TrendTS(HoldingCompetitor):
     family = "trend_ts"
     default_params = {
         "fast": 50, "slow": 200, "lb_short_days": 30, "lb_long_days": 90,
@@ -30,7 +30,7 @@ class TrendTS(Competitor):
         p = self.params
         return max(int(p["slow"]), int(p["lb_long_days"]) * 24, int(p["vol_window"])) + 1
 
-    def decide(self, snap: Snapshot) -> Decision:
+    def compute(self, snap: Snapshot) -> Decision:
         p = self.params
         out: Decision = {}
         for sym in snap.symbols:
