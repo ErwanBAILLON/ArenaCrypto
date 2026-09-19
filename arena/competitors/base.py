@@ -19,9 +19,22 @@ class Competitor(ABC):
     family: ClassVar[str]
     default_params: ClassVar[dict[str, Any]] = {}
 
-    def __init__(self, params: dict[str, Any] | None = None, seed: int = 0):
+    def __init__(self, params: dict[str, Any] | None = None, seed: int = 0, bar_hours: int = 1):
         self.params: dict[str, Any] = {**self.default_params, **(params or {})}
         self.seed = seed
+        self.bar_hours = int(bar_hours)
+
+    @property
+    def bars_per_day(self) -> int:
+        return 24 // self.bar_hours
+
+    @property
+    def bars_per_year(self) -> int:
+        return 365 * self.bars_per_day
+
+    def days(self, n: float) -> int:
+        """Number of bars in ``n`` days for this universe."""
+        return max(1, int(round(float(n) * self.bars_per_day)))
 
     def warmup_bars(self) -> int:
         """Number of 1h bars required before the first decision."""
@@ -46,9 +59,9 @@ def register(cls: type[Competitor]) -> type[Competitor]:
     return cls
 
 
-def build(spec: CompetitorSpec) -> Competitor:
+def build(spec: CompetitorSpec, bar_hours: int = 1) -> Competitor:
     cls = REGISTRY[spec.family]
-    return cls(spec.params, seed=spec.params.get("seed", 0))
+    return cls(spec.params, seed=spec.params.get("seed", 0), bar_hours=bar_hours)
 
 
 def cap_gross(decision: Decision) -> Decision:
@@ -74,8 +87,8 @@ class HoldingCompetitor(Competitor):
     rebalance_weekday: ClassVar[int | None] = None  # None = daily; 0 = Mondays only, etc.
     band: ClassVar[float] = 0.10
 
-    def __init__(self, params: dict[str, Any] | None = None, seed: int = 0):
-        super().__init__(params, seed)
+    def __init__(self, params: dict[str, Any] | None = None, seed: int = 0, bar_hours: int = 1):
+        super().__init__(params, seed, bar_hours)
         self._held: Decision = {}
         self._held_ts: str | None = None
 

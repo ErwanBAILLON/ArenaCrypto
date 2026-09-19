@@ -44,7 +44,7 @@ def xs_momentum(t: optuna.Trial) -> dict[str, Any]:
 
 def regime(t: optuna.Trial) -> dict[str, Any]:
     return {
-        "vol_window": t.suggest_int("vol_window", 24 * 10, 24 * 45),
+        "vol_window_days": t.suggest_int("vol_window_days", 10, 45),
         "trend_fast": t.suggest_int("trend_fast", 20, 80),
         "trend_slow": t.suggest_int("trend_slow", 100, 300),
         "bull_weight": t.suggest_float("bull_weight", 0.3, 0.8),

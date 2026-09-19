@@ -43,20 +43,21 @@ DEFAULT_BASES = [{"family": "trend_ts", "params": {}}, {"family": "xs_momentum",
 def build_features(snap: Snapshot, symbol: str, base_weight: float, n_agree: int, regime: str) -> dict[str, float]:
     """Context features for one base signal on ``symbol`` at ``snap.ts``."""
     close = snap.candles(symbol, "1h")["close"]
-    vol = realised_vol(close, 24 * 30)
+    bpd = snap.bars_per_day
+    vol = realised_vol(close, 30 * bpd, snap.bars_per_year)
     fund = snap.funding(symbol)
     fund_3d = fund[fund.index > snap.ts - pd.Timedelta(days=3)]
     oi = snap.open_interest(symbol)
     oi_change = float("nan")
-    if len(oi) > 24 and oi.iloc[-25] > 0:
-        oi_change = float(oi.iloc[-1] / oi.iloc[-25] - 1.0)
+    if len(oi) > bpd and oi.iloc[-bpd - 1] > 0:
+        oi_change = float(oi.iloc[-1] / oi.iloc[-bpd - 1] - 1.0)
     news = snap.news(symbol)
     last_news = news.iloc[-1] if not news.empty else None
     feats: dict[str, float] = {
         "base_weight": float(base_weight),
         "n_agree": float(n_agree),
         "vol_30d": float(vol.iloc[-1]) if len(vol) else float("nan"),
-        "r_7d": pct_return(close, 24 * 7),
+        "r_7d": pct_return(close, 7 * bpd),
         "funding_3d": float(fund_3d.mean()) if len(fund_3d) else 0.0,
         "oi_change_24h": oi_change,
         "sent_24h": float(last_news["sent_24h"]) if last_news is not None else 0.0,
@@ -86,10 +87,10 @@ class MetaLabel(Competitor):
     family = "meta_label"
     default_params: dict[str, Any] = {"bases": DEFAULT_BASES, "threshold": 0.55, "model_str": None}
 
-    def __init__(self, params: dict[str, Any] | None = None, seed: int = 0):
-        super().__init__(params, seed)
+    def __init__(self, params: dict[str, Any] | None = None, seed: int = 0, bar_hours: int = 1):
+        super().__init__(params, seed, bar_hours)
         self.bases: list[Competitor] = [
-            REGISTRY[b["family"]](b.get("params") or {}, seed=seed) for b in self.params["bases"]
+            REGISTRY[b["family"]](b.get("params") or {}, seed=seed, bar_hours=bar_hours) for b in self.params["bases"]
         ]
         self._booster = None
         if self.params.get("model_str"):
@@ -98,7 +99,7 @@ class MetaLabel(Competitor):
             self._booster = lgb.Booster(model_str=self.params["model_str"])
 
     def warmup_bars(self) -> int:
-        return max([b.warmup_bars() for b in self.bases] + [24 * 30 + 1])
+        return max([b.warmup_bars() for b in self.bases] + [self.days(30) + 1])
 
     def base_signals(self, snap: Snapshot) -> tuple[dict[str, tuple[float, int]], str]:
         decisions = [b.decide(snap) for b in self.bases]

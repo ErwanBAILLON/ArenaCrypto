@@ -33,8 +33,8 @@ class XSMomentum(Competitor):
         "long_only": False,
     }
 
-    def __init__(self, params: dict | None = None, seed: int = 0):
-        super().__init__(params, seed)
+    def __init__(self, params: dict | None = None, seed: int = 0, bar_hours: int = 1):
+        super().__init__(params, seed, bar_hours)
         self._prev: dict[str, int] = {}
         self._last_rebalance_ts: pd.Timestamp | None = None
 
@@ -50,14 +50,14 @@ class XSMomentum(Competitor):
         self._last_rebalance_ts = pd.Timestamp(ts) if ts else None
 
     def warmup_bars(self) -> int:
-        return (int(self.params["lookback_days"]) + int(self.params["skip_days"])) * 24 + 1
+        return self.days(int(self.params["lookback_days"]) + int(self.params["skip_days"])) + 1
 
     def _scores(self, snap: Snapshot) -> pd.Series:
         closes = snap.closes()
         if len(closes) < self.warmup_bars():
             return pd.Series(dtype=float)
-        skip = int(self.params["skip_days"]) * 24
-        span = (int(self.params["lookback_days"]) + int(self.params["skip_days"])) * 24
+        skip = self.days(self.params["skip_days"]) if int(self.params["skip_days"]) else 0
+        span = self.days(int(self.params["lookback_days"]) + int(self.params["skip_days"]))
         score = closes.iloc[-1 - skip] / closes.iloc[-1 - span] - 1.0
         return score.dropna()
 

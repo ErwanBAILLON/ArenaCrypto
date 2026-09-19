@@ -158,7 +158,7 @@ def params_in_words(family: str, params: dict[str, Any]) -> list[str]:
     elif family == "regime":
         out += [
             f"tendance EMA {p.get('trend_fast', 50)} / {p.get('trend_slow', 200)} du BTC",
-            f"volatilité sur {int(p.get('vol_window', 720)) // 24} jours",
+            f"volatilité sur {int(p.get('vol_window_days', 30))} jours",
             f"{float(p.get('bull_weight', 0.5)) * 100:.0f} % investi en marché haussier",
             f"{float(p.get('range_carry_weight', 0.5)) * 100:.0f} % en carry en marché sans tendance",
         ]

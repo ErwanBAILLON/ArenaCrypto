@@ -25,6 +25,17 @@ class Universe:
     fees: Fees
     nav0: float
     history_start: datetime
+    name: str = "crypto"
+    exchange: str = "binance"  # data source: "binance" (1h perps) or "yahoo" (1d classic markets)
+    bar: str = "1h"  # "1h" or "1d": the decision bar of this universe
+
+    @property
+    def bar_hours(self) -> int:
+        return {"1h": 1, "1d": 24}[self.bar]
+
+    @property
+    def bars_per_day(self) -> int:
+        return 24 // self.bar_hours
 
     def binance_symbol(self, symbol: str) -> str:
         return f"{symbol}{self.binance_suffix}"
@@ -51,4 +62,7 @@ def load_universe(path: str | Path | None = None) -> Universe:
         ),
         nav0=float(raw.get("nav0", 10_000.0)),
         history_start=ts,
+        name=str(raw.get("name", "crypto")),
+        exchange=str(raw.get("exchange", "binance")),
+        bar=str(raw.get("bar", "1h")),
     )

@@ -58,7 +58,7 @@ class Carry(HoldingCompetitor):
     }
 
     def warmup_bars(self) -> int:
-        return int(self.params["lookback_days"]) * 24
+        return self.days(self.params["lookback_days"])
 
     def compute(self, snap: Snapshot) -> Decision:
         k = int(self.params["k"])

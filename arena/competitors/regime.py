@@ -17,7 +17,7 @@ from arena.core.snapshot import Snapshot
 from arena.core.types import Decision, Target
 
 DEFAULT_PARAMS: dict[str, Any] = {
-    "vol_window": 24 * 30,
+    "vol_window_days": 30,
     "vol_lookback_days": 180,
     "trend_fast": 50,
     "trend_slow": 200,
@@ -28,19 +28,21 @@ LABELS = ("bull_calm", "bull_vol", "bear", "range", "unknown")
 CARRY_LOOKBACK_DAYS = 3
 
 
-def warmup_bars(params: dict[str, Any]) -> int:
-    return max(int(params["trend_slow"]), int(params["vol_window"]) + int(params["vol_lookback_days"]) * 24) + 1
+def warmup_bars(params: dict[str, Any], bars_per_day: int = 24) -> int:
+    vol_window = int(params["vol_window_days"]) * bars_per_day
+    return max(int(params["trend_slow"]), vol_window + int(params["vol_lookback_days"]) * bars_per_day) + 1
 
 
 def regime_label(snap: Snapshot, symbol: str = "BTC", params: dict[str, Any] | None = None) -> str:
     """Classify the market state from ``symbol``'s 1h closes at ``snap.ts``."""
     p = {**DEFAULT_PARAMS, **(params or {})}
     close = snap.candles(symbol, "1h")["close"]
-    if len(close) < warmup_bars(p):
+    bpd = snap.bars_per_day
+    if len(close) < warmup_bars(p, bpd):
         return "unknown"
     trend_up = float(ema(close, int(p["trend_fast"])).iloc[-1]) > float(ema(close, int(p["trend_slow"])).iloc[-1])
-    vol = realised_vol(close, int(p["vol_window"])).dropna()
-    recent = vol.iloc[-int(p["vol_lookback_days"]) * 24 :]
+    vol = realised_vol(close, int(p["vol_window_days"]) * bpd, snap.bars_per_year).dropna()
+    recent = vol.iloc[-int(p["vol_lookback_days"]) * bpd :]
     hi = recent.quantile(2 / 3)
     v = float(vol.iloc[-1])
     high_vol = v > hi
@@ -55,7 +57,7 @@ class Regime(HoldingCompetitor):
     default_params = DEFAULT_PARAMS
 
     def warmup_bars(self) -> int:
-        return warmup_bars(self.params)
+        return warmup_bars(self.params, self.bars_per_day)
 
     def compute(self, snap: Snapshot) -> Decision:
         p = self.params

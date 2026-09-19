@@ -67,8 +67,10 @@ class Snapshot:
         hl_funding: dict[str, float] | None = None,
         news: dict[str, pd.DataFrame] | None = None,
         macro_events: pd.DatetimeIndex | None = None,
+        bar_hours: int = 1,
     ):
         self.ts = _utc(ts)
+        self.bar_hours = int(bar_hours)
         self.symbols = list(symbols)
         self._c1h = candles_1h
         self._funding = funding or {}
@@ -90,6 +92,7 @@ class Snapshot:
         hl_funding: dict[str, float] | None = None,
         news: pd.DataFrame | None = None,
         macro_events: pd.DatetimeIndex | None = None,
+        bar_hours: int = 1,
     ) -> Snapshot:
         """Build from long frames (columns include ``symbol`` and ``ts``).
 
@@ -126,12 +129,13 @@ class Snapshot:
                 f = g.set_index("ts")[NEWS_COLS].sort_index().astype(float)
                 f.index = _to_utc_index(f.index)
                 nw[str(sym)] = f
-        return cls(ts, symbols, c1h, fund, oi, hl_funding, nw, macro_events)
+        return cls(ts, symbols, c1h, fund, oi, hl_funding, nw, macro_events, bar_hours=bar_hours)
 
     def at(self, ts: datetime) -> Snapshot:
         """Cheap view of the same data at another decision time."""
         s = Snapshot.__new__(Snapshot)
         s.ts = _utc(ts)
+        s.bar_hours = self.bar_hours
         s.symbols = self.symbols
         s._c1h, s._funding, s._oi, s._hl, s._news, s._macro = (
             self._c1h,
@@ -145,9 +149,23 @@ class Snapshot:
         return s
 
     # ----------------------------------------------------------------- accessors
+    @property
+    def bars_per_day(self) -> int:
+        return 24 // self.bar_hours
+
+    @property
+    def bars_per_year(self) -> int:
+        return 365 * self.bars_per_day
+
     def candles(self, symbol: str, tf: str = "1h") -> pd.DataFrame:
+        """Bars at ``tf``; ``tf="1h"`` means "the universe's native bar" (1h or 1d)."""
         if tf not in _TF_RULE:
             raise ValueError(f"unknown tf {tf}")
+        native = {1: "1h", 24: "1d"}[self.bar_hours]
+        if tf == native or tf == "1h":
+            tf = "1h"  # native bars are stored under the 1h key whatever their size
+        elif self.bar_hours == 24:
+            raise ValueError(f"tf {tf} is finer than the daily bars of this universe")
         key = (symbol, tf)
         if key in self._cache:
             return self._cache[key]
