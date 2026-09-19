@@ -324,3 +324,10 @@ confirmation tool for finalists (future work).
   and FX; no funding, hence no carry; benchmark is holding the reference asset
   (SPY). Competitors carry a `universe` column; ticks, books, nulls and founders
   are per universe. Names outside the crypto arena are suffixed (`_classic`).
+- **Price action family** (`price_action`): classic technical analysis made
+  mechanical (swing pivots, highest/lowest level of the lookback, breakout with
+  volume above the median and a candle in the direction, Fibonacci retracement
+  zone with a hammer / engulfing reversal, trailing stop on the extreme of the
+  last N bars). Two horizons as founders: `swing` and `position`. Judged like
+  every other family; its levels are one arbitrary but reproducible reading of
+  what a chartist would draw.

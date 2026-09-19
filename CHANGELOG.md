@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-20
+
+### Added
+- `price_action` family: mechanical support/resistance levels, breakouts with volume and candle confirmation, Fibonacci pullbacks with reversal candles, trailing stop on recent extremes; two founders, `swing` (daily re-decision) and `position` (weekly), in both arenas.
+- Arena badge (crypto / classic markets) on the dashboard.
+
+
 ## [0.3.0] - 2026-09-19
 
 ### Added
