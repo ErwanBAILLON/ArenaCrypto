@@ -59,8 +59,9 @@ expected state of an honest arena.
                                |
             +------------------+------------------+----------------------+
             v                  v                  v                      v
-      null_cash / null_random   bench_btc_hold /   carry  trend_ts       regime  meta_label  news
-      (always in the arena)     bench_carry_equal  xs_momentum           (arena.competitors)
+      null_cash / null_random   bench_btc_hold /   carry  trend_ts    regime  meta_label  news
+      (30 draws + cash)         bench_carry_equal  xs_momentum  price_action  funding_skew
+                                                   crowded_trend         (arena.competitors)
             |                  |                  |                      |
             +------------------+--------+---------+----------------------+
                                         v
@@ -96,6 +97,7 @@ uv run arena bootstrap --skip-backfill    # register null models, gate the found
 uv run arena tick --no-ingest             # one forward tick on stored data: decide, book, alert
 uv run arena digest                       # the daily leaderboard, printed because DRY_RUN=true
 uv run arena judge carry                  # run the entry gate on one family and print the verdict
+uv run arena audit                        # arena-wide multiple testing over every gate decision
 ```
 
 `backfill` from 2024-01-01 (the default) pulls about 15 000 1h candles per
@@ -212,6 +214,7 @@ a `trials` row is written either way.
 | Stationary block bootstrap p-value of Sharpe <= 0 | < 0.10 (blocks of 24 bars, 1000 draws) | autocorrelated hourly returns need a block bootstrap, not an i.i.d. one |
 | Maximum drawdown | < 30 % | a rule nobody would hold through is not a rule |
 | Decisions | at least 30 bars with a non-flat target | enough events to say anything |
+| Probability of backtest overfitting (Bailey, Borwein, López de Prado, Zhu) | < 0.50, over every evaluation of the search that produced the candidate | the deflated Sharpe asks whether one Sharpe is too good for the number of tries; PBO asks whether picking the best try generalises at all. They fail differently, so both must hold. Only measured on the optimisation path |
 
 Null models and benchmarks skip the gate. The `news` family is not backtested
 (its scores only exist forward) and enters directly as a challenger.
@@ -225,10 +228,24 @@ Null models and benchmarks skip the gate. The `news` family is not backtested
   `challenger` with `parent_id` pointing at the current champion.
 - ML families (`meta_label`): retrained every 14 days on a rolling 12-month
   window, purged walk-forward validation, artefact stored in `models`.
-- Promotion, checked every tick: a challenger becomes champion when it has at
-  least 6 weeks or 100 decisions in the arena, its forward Sharpe beats the
-  champion's over their common window, and it is above the null 95th percentile
-  over that window. The old champion becomes `retired`; its books are kept.
+- Promotion, checked every tick, four barriers in order:
+  1. **the gate.** A competitor the entry gate refused is never promoted. It
+     keeps its forward book — watching a refused rule lose is the point — but
+     it cannot be crowned, including in a family that has no champion yet.
+     `arena judge <name>` re-runs the gate on fresh data and, on an admitted
+     verdict, makes it promotable. Families that cannot be backtested in
+     principle (`news`) are exempt by name.
+  2. **length.** 6 weeks or 100 decisions in the arena.
+  3. **luck.** `P(true Sharpe > null 95th percentile) >= 95 %`, on the
+     autocorrelation-adjusted sample size. The threshold needs at least 20 null
+     series covering the challenger's own window, hence the 30 `null_random`
+     competitors; below that the arena reports `null_underpowered` rather than
+     promoting against a quantile of five numbers.
+  4. **the incumbent.** `P(true Sharpe of the paired difference > 0) >= 95 %`
+     on `challenger - champion` bar by bar. Two books riding the same market
+     are not two independent opinions about it, so the comparison is paired.
+
+  The old champion becomes `retired`; its books are kept.
 - Budget: at most 3 live challengers per family; the oldest surplus is retired.
 - The allocator (`weight_i` proportional to `max(0, Sharpe_60d_i)` over
   champions, EMA-smoothed at about 10 %/day, residual to cash) is an opinion
@@ -325,7 +342,22 @@ are kept per universe, the dashboard and the digest show both.
   deterministic and versioned so a better scorer can be added as a new
   `scorer_version`, but v1 should not be expected to carry much signal.
 - **No forward track record yet.** The arena has run for days, not months.
-  Nothing has been promoted on forward data.
+  Nothing has been promoted on forward data, and nothing can be: with one
+  weekly-rebalanced bet held through 168 hourly bars, the effective sample size
+  is a fraction of the bar count, and `min_track_record_length` says how many
+  bars a given Sharpe would still need. The dashboard shows that number per
+  competitor rather than a leaderboard position.
+- **Positioning data does not go back far enough to gate anything.** Binance
+  serves 30 days of open-interest history, and Hyperliquid snapshots and news
+  articles only exist from the day the arena started. Every hypothesis built on
+  them (OI/price divergence, cross-venue basis, attention shocks) could only
+  enter forward-only and ungated, which promotion now refuses. They wait until
+  there is enough stored history to judge them.
+- **Multiple testing across families is reported, not enforced.** `arena audit`
+  applies Benjamini-Hochberg over every gate decision and re-deflates each
+  admission against the arena-wide trial count, but the gate itself still
+  deflates per family. Nine families searched weekly is the same selection
+  machine that produced the freqtrade backtests, running slower.
 
 ## Layout
 

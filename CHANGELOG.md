@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-23
+
+A round on the judge, and two families that test one hypothesis about funding.
+Design note: `docs/specs/2026-09-23-crowding-and-the-judge.md`.
+
+### Fixed
+- **A model the gate refused could become champion by default.** `bootstrap` inserted a refused founder as a challenger, and `should_promote` only compared against a champion "if champion is not None" — so each of the six families without a champion would have crowned a gate-refused model around day 42. Competitors now carry `gate_admitted` (migration 0005, backfilled from the rationale); promotion refuses `never_admitted`; `arena judge <name>` re-runs the gate and flips the flag. Forward-only families (`news`) are exempt by name.
+- **The forward null threshold was the 95th percentile of five numbers** while the entry gate used fifty. The arena carries 30 `null_random` competitors, counts only those covering the challenger's own window, and refuses `null_underpowered` below 20.
+- **The weekly search ran in the wrong arena.** `optimize.run` took no bar size and no universe: on classic markets it built hourly competitors on daily bars (warm-ups 24× too long, so nothing ever traded) and annualised by 8760. Every Sunday `arena-classic-challenger` produced eighteen folds of exactly 0.00 Sharpe and still charged every evaluation against the *crypto* deflated Sharpe. `count_trials` and the version counter are now scoped by universe, and an admitted classic challenger no longer lands in the crypto arena.
+- **Promotion and champion-bleeding annualised daily bars as hourly.** Both now read the bar size from the universe; the dashboard infers it from the bar spacing.
+- **The macro calendar read as three days dead** while being polled every thirty minutes: it is upserted with `ON CONFLICT DO NOTHING`, so a week already stored writes no row and `max(fetched_at)` never moved.
+- **Trials were left open forever.** ~170 optimisation rows had shown as "running" since 20 September. Evaluations are written closed; `abandon_stale_trials` closes what a killed process left behind.
+
+### Added
+- `metrics.effective_n`: autocorrelation-adjusted sample size. A competitor holding one weekly bet for 168 bars provides one observation, not 168 — every statistic below uses it.
+- `metrics.sharpe_se`, `probabilistic_sharpe`, `min_track_record_length`, `track_record_verdict`: the standard error of a Sharpe, P(true Sharpe > benchmark), and how many bars are still missing before a claim is allowed.
+- `metrics.pbo_cscv`: probability of backtest overfitting by combinatorially symmetric cross-validation, measured over every evaluation of a search and enforced as the gate's `pbo` criterion (≤ 0.50). DSR asks whether one Sharpe is too good for the number of tries; PBO asks whether picking the best generalises.
+- `arena audit`: Benjamini-Hochberg across every gate decision in an arena, each admission's deflated Sharpe recomputed against the arena-wide trial count, and the number of admissions chance alone predicts.
+- `funding_skew` family: cross-sectional funding crowding as a signal — short the highest z-scores, buy the lowest, gross balanced, stands aside on a flat cross-section.
+- `crowded_trend` family: the same crowding measure as a filter on the `trend_ts` signal — no long where the crowd already pays a premium, no short where it is already paid.
+- `feed_health` table (migration 0006): ingestion records every attempt, and `drift.stale_feeds` watches all six sources with a tolerance per source, where only candles were watched before.
+
+### Changed
+- **The leaderboard ranks on evidence.** Its sort key was an annualised Sharpe computed on as few as 24 hourly bars, which live put a coin flip in third place and showed the random 95th percentile at 10.36. Every row now carries `Sharpe ± standard error`, the probability it beats the null models, and the time still needed to reach the 95 % promotion bar. The thirty random models collapse into one row.
+- The front page opens with the age of the experiment and what nothing-yet-proven means, before a single euro.
+- The Telegram digest replaced "en avance sur le champion" with a sentence containing a probability, and says how many days a challenger still needs.
+- The trials page hides the parameter-search sampling behind a link and shows the PBO criterion beside the deflated Sharpe.
+
 ## [0.4.0] - 2026-09-20
 
 ### Added
