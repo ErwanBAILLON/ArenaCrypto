@@ -355,6 +355,30 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
 
 
 @app.command()
+def nulls() -> None:
+    """Register any missing null models and benchmarks for this universe (idempotent, cheap).
+
+    The forward promotion test compares a challenger to a quantile of the null
+    models running beside it, and refuses to promote on fewer than
+    ``promotion.MIN_NULL_SAMPLES`` of them. An arena bootstrapped when the
+    target was five needs the rest added without re-running the whole
+    bootstrap, which would re-gate every founder. Nothing existing is touched;
+    new draws simply start their book at the next tick, so the threshold
+    becomes usable once they cover a challenger's window.
+    """
+    _, conn, universe = _ctx()
+    existing = {s.name for s in registry.list_competitors(conn, universe=universe.name)}
+    added = [spec.name for spec in nulls_for(universe) if spec.name not in existing]
+    for spec in nulls_for(universe):
+        if spec.name not in existing:
+            registry.insert_competitor(conn, spec)
+    conn.commit()
+    typer.echo(f"{universe.name}: {len(added)} added, {len(existing & {s.name for s in nulls_for(universe)})} present")
+    for name in added:
+        typer.echo(f"  + {name}")
+
+
+@app.command()
 def audit(q: float = typer.Option(0.10, help="Benjamini-Hochberg false discovery rate")) -> None:
     """Arena-wide multiple testing: how many admissions survive the number of tests run.
 

@@ -109,3 +109,21 @@ def test_explicit_exit_rows_are_written(conn):
         )
         row = cur.fetchone()
     assert row["weight"] == 0.0 and row["reason"] == {"exit": True}
+
+
+def test_arena_nulls_is_idempotent_and_tops_up(conn, monkeypatch, tmp_path):
+    """Promotion needs 20+ null series; an arena bootstrapped with five must be able to catch up."""
+    from typer.testing import CliRunner
+
+    from arena.cli import N_NULL_COMPETITORS, app
+
+    monkeypatch.setenv("DATABASE_URL", conn.info.dsn)
+    monkeypatch.setenv("DRY_RUN", "true")
+    runner = CliRunner()
+    assert runner.invoke(app, ["nulls"]).exit_code == 0
+    first = {s.name for s in registry.list_competitors(conn, universe="crypto")}
+    assert sum(1 for n in first if n.startswith("null_random_")) == N_NULL_COMPETITORS
+
+    result = runner.invoke(app, ["nulls"])
+    assert result.exit_code == 0 and "0 added" in result.stdout
+    assert {s.name for s in registry.list_competitors(conn, universe="crypto")} == first

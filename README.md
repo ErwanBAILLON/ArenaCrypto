@@ -297,6 +297,12 @@ CronJobs (`helm/values.yaml`, `schedules` and `resources`):
 | `arena-challenger` | `0 3 * * 0` | `arena challenger` | 400m/640Mi to 2 CPU/2Gi |
 | `arena-retrain` | `0 4 1,15 * *` | `arena retrain` | 400m/640Mi to 2 CPU/2Gi |
 
+If you bootstrapped the arena before `N_NULL_COMPETITORS` was raised to 30, run
+`arena nulls` once per universe: it registers the missing null models and
+benchmarks without re-gating the founders. Until they cover a challenger's
+window, promotion reports `null_underpowered` and crowns nobody, which is the
+intended behaviour rather than a failure.
+
 `bootstrap.enabled: true` renders a one-shot Job (`arena bootstrap --since
 <bootstrap.since>`) that migrates, backfills, registers the null models and
 gates the founders; flip it back to `false` afterwards. `env.ARENA_WORKERS`

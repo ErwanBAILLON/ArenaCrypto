@@ -27,6 +27,7 @@ Design note: `docs/specs/2026-09-23-crowding-and-the-judge.md`.
 - `arena audit`: Benjamini-Hochberg across every gate decision in an arena, each admission's deflated Sharpe recomputed against the arena-wide trial count, and the number of admissions chance alone predicts.
 - `funding_skew` family: cross-sectional funding crowding as a signal — short the highest z-scores, buy the lowest, gross balanced, stands aside on a flat cross-section.
 - `crowded_trend` family: the same crowding measure as a filter on the `trend_ts` signal — no long where the crowd already pays a premium, no short where it is already paid.
+- `arena nulls`: register the null models and benchmarks an already-bootstrapped arena is missing, without re-gating its founders.
 - `feed_health` table (migration 0006): ingestion records every attempt, and `drift.stale_feeds` watches all six sources with a tolerance per source, where only candles were watched before.
 
 ### Changed
