@@ -68,12 +68,17 @@ def nulls_for(universe) -> list[CompetitorSpec]:
     return specs
 
 
-def _ctx():
+_LAST_MIGRATIONS: list[str] = []
+
+
+def _ctx(report_migrations: bool = False):
     settings = Settings.from_env()
     if not settings.database_url:
         raise typer.BadParameter("DATABASE_URL is required")
     conn = connect(settings.database_url)
-    run_migrations(conn)  # idempotent and cheap: every command runs on a current schema
+    applied = run_migrations(conn)  # idempotent and cheap: every command runs on a current schema
+    if report_migrations:
+        _LAST_MIGRATIONS[:] = applied
     return settings, conn, load_universe(settings.universe_path)
 
 
@@ -83,10 +88,17 @@ def _now() -> datetime:
 
 @app.command()
 def migrate() -> None:
-    """Apply pending SQL migrations."""
-    _, conn, _ = _ctx()
-    applied = run_migrations(conn)
-    typer.echo(f"applied: {applied or 'nothing'}")
+    """Apply pending SQL migrations and report what was applied.
+
+    ``_ctx`` already migrates -- every sub-command runs on a current schema --
+    so this reads what that call did instead of running it again. The previous
+    version re-ran it, always found nothing left, and printed "applied:
+    nothing" even when it had just created the whole schema, which is an
+    actively misleading thing to read during an incident.
+    """
+    _, conn, _ = _ctx(report_migrations=True)
+    applied = _LAST_MIGRATIONS
+    typer.echo(f"applied: {', '.join(applied) if applied else 'nothing (schema already current)'}")
 
 
 @app.command()
@@ -409,12 +421,24 @@ def audit(q: float = typer.Option(0.10, help="Benjamini-Hochberg false discovery
 def web(
     host: str = typer.Option("0.0.0.0", help="Bind address"), port: int = typer.Option(8080, help="TCP port")
 ) -> None:
-    """Serve the read-only dashboard (requires the ``web`` extra)."""
+    """Serve the read-only dashboard (requires the ``web`` extra).
+
+    Migrates first, like every other sub-command. The dashboard is the one
+    process that runs continuously, so on a deploy it is the first to meet the
+    new schema: without this it would serve 500s against the old one until the
+    next tick happened to migrate.
+    """
     import uvicorn
 
     from arena.web.app import create_app
 
-    uvicorn.run(create_app(Settings.from_env()), host=host, port=port, log_level="info")
+    settings = Settings.from_env()
+    conn = connect(settings.database_url)
+    try:
+        run_migrations(conn)
+    finally:
+        conn.close()
+    uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":

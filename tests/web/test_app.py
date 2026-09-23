@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import pandas as pd
 import pytest
+from typer.testing import CliRunner
 
 TestClient = pytest.importorskip("fastapi.testclient", reason="web extra not installed").TestClient
 
@@ -397,3 +398,23 @@ def test_a_trial_that_just_started_is_left_alone(conn) -> None:
     registry.add_trial(conn, "carry", "walkforward", {}, {}, None)
     conn.commit()
     assert registry.abandon_stale_trials(conn) == 0
+
+
+def test_the_web_command_migrates_before_serving(monkeypatch, pg_url) -> None:
+    """The dashboard runs continuously, so on a deploy it meets the new schema first."""
+    from arena import cli
+
+    with cli.connect(pg_url) as c, c.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS feed_health")
+        cur.execute("DELETE FROM schema_migrations WHERE name = '0006_feed_health.sql'")
+        c.commit()
+
+    served: dict[str, object] = {}
+    monkeypatch.setenv("DATABASE_URL", pg_url)
+    monkeypatch.setattr("uvicorn.run", lambda app, **kw: served.update(app=app, **kw))
+    CliRunner().invoke(cli.app, ["web", "--port", "9999"], catch_exceptions=False)
+
+    assert served["port"] == 9999
+    with cli.connect(pg_url) as c, c.cursor() as cur:
+        cur.execute("SELECT to_regclass('public.feed_health') AS t")
+        assert cur.fetchone()["t"] is not None

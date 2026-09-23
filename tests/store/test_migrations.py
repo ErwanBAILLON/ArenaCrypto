@@ -46,3 +46,24 @@ def test_gate_admitted_backfill_reads_the_rationale(conn):
         cur.execute("SELECT name, gate_admitted FROM competitors ORDER BY name")
         flags = {r["name"]: r["gate_admitted"] for r in cur.fetchall()}
     assert flags == {"admitted_one": True, "refused_one": False, "a_null": False}
+
+
+def test_migrate_reports_what_it_applied(conn, monkeypatch, capsys):
+    """ "applied: nothing" while creating the whole schema is a lie you read during an incident."""
+    from typer.testing import CliRunner
+
+    from arena import cli
+
+    with conn.cursor() as cur:
+        cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+    conn.commit()
+    monkeypatch.setenv("DATABASE_URL", conn.info.dsn)
+    monkeypatch.setenv("DRY_RUN", "true")
+
+    runner = CliRunner()
+    first = runner.invoke(cli.app, ["migrate"])
+    assert first.exit_code == 0
+    assert "0001_core.sql" in first.stdout and "0006_feed_health.sql" in first.stdout
+
+    second = runner.invoke(cli.app, ["migrate"])
+    assert second.exit_code == 0 and "nothing (schema already current)" in second.stdout
