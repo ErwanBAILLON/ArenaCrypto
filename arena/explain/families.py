@@ -98,6 +98,40 @@ CARDS: dict[str, FamilyCard] = {
             "ce que la comparaison des trois familles doit trancher.",
         ],
     ),
+    "xs_sparse": FamilyCard(
+        "xs_sparse",
+        "Panier simple (coupe transversale)",
+        "Classe tous les actifs de l'univers sur cinq critères simples (momentum, retour à la moyenne à une semaine, "
+        "encombrement du funding, volatilité, position dans le range), fait la moyenne des classements et achète le haut "
+        "en vendant le bas, à parts égales. Rien n'est estimé sur les données : c'est le témoin qui sert à savoir si un "
+        "modèle compliqué apporte vraiment quelque chose.",
+        [
+            "Le panel complet de la coupe transversale (rangs uniquement)",
+            "Momentum 30 jours en sautant la dernière semaine, rendement 7 jours, funding, volatilité 30 jours",
+        ],
+        "Une fois par semaine le lundi, mais chaque position peut se fermer tous les jours sur son objectif de gain",
+        [
+            "Neutre au marché par construction : ne peut pas gagner en étant simplement long crypto.",
+            "Aucun paramètre appris, donc très peu d'essais consommés : c'est son avantage face au test d'entrée.",
+        ],
+    ),
+    "xs_complex": FamilyCard(
+        "xs_complex",
+        "Panier appris (milliers de paramètres)",
+        "Même univers, mêmes règles de sortie et même construction de portefeuille que le panier simple, mais la note de "
+        "chaque actif vient d'un modèle à plusieurs milliers de paramètres entraîné sur l'historique. Ce qu'on lui demande "
+        "d'apprendre, ce sont les interactions qu'une moyenne ne peut pas dire : la réversion paie quand le funding est "
+        "extrême, le momentum paie quand les actifs se dispersent.",
+        [
+            "Le panel complet de la coupe transversale (une centaine de colonnes brutes et leurs rangs)",
+            "Un modèle entraîné hors ligne, rejoué depuis un artefact stocké",
+        ],
+        "Une fois par semaine le lundi, avec fermeture possible chaque jour sur l'objectif de gain",
+        [
+            "Sans artefact entraîné, il reste à plat : pas de repli silencieux sur autre chose.",
+            "La thèse qu'il teste est contestée (Nagel 2025) ; le panier simple existe précisément pour l'arbitrer.",
+        ],
+    ),
     "meta_label": FamilyCard(
         "meta_label",
         "Méta-étiquetage (filtre appris)",

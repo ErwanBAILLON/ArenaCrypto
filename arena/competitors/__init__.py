@@ -10,7 +10,9 @@ from arena.competitors import (  # noqa: E402,F401
     price_action,
     regime,
     trend_ts,
+    xs_complex,
     xs_momentum,
+    xs_sparse,
 )
 from arena.competitors.base import REGISTRY, Competitor, build, cap_gross, register
 
