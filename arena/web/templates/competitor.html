@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Arène · {{ p.card.title }}{% endblock %}
 {% block content %}
+<p class="small"><a href="/competitors/{{ p.spec.id }}/attribution">→ Où ce modèle gagne et où il perd</a></p>
 <h2>{{ p.card.title }}
   <span class="pill {{ status_css(p.spec.role, p.spec.status) }}">{{ status_fr(p.spec.role, p.spec.status) }}</span>
   <span class="muted small">{{ p.spec.name }} · version {{ p.spec.version }}</span>

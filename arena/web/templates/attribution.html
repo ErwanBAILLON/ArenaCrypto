@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Arène · Où {{ p.card.title }} gagne et perd{% endblock %}
+{% block content %}
+<h2>Où <a href="/competitors/{{ p.spec.id }}">{{ p.card.title }}</a> gagne et où il perd</h2>
+<p class="muted small">Chaque « position » est une détention continue d'un actif, de son entrée à sa sortie. Le résultat est mesuré <strong>en excès du marché</strong> : une position qui monte moins que l'univers compte comme une perte. Reconstruit depuis ce que le modèle a déjà enregistré, donc valable rétroactivement.</p>
+
+<div class="card">
+  <div class="kpis">
+    <div class="kpi"><div class="v">{{ summary.trades }}</div><div class="l">positions</div></div>
+    <div class="kpi"><div class="v {{ summary.pnl|sign_css }}">{{ summary.pnl|pct_fr }}</div><div class="l">contribution totale</div></div>
+    <div class="kpi"><div class="v">{{ (summary.win_rate * 100)|round|int }} %</div><div class="l">taux de réussite</div></div>
+    <div class="kpi"><div class="v">{{ summary.mean_bars|round|int if summary.mean_bars else '—' }}</div><div class="l">durée moyenne (barres)</div></div>
+    <div class="kpi"><div class="v">{{ (summary.concentration * 100)|round|int }} %</div><div class="l">du gain sur 3 actifs</div></div>
+  </div>
+  {% if summary.concentration > 0.8 %}
+  <p class="neg small"><strong>Attention :</strong> l'essentiel du gain vient de trois actifs. Ce n'est pas un modèle, c'est un pari sur ces trois-là.</p>
+  {% endif %}
+</div>
+
+<h2>Est-ce qu'il sait ce qu'il ne sait pas ?</h2>
+<div class="card">
+{% if reliability %}
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Confiance annoncée</th><th class="n">Annoncé</th><th class="n">Observé</th><th class="n">Positions</th><th class="n">Contribution</th></tr></thead>
+  <tbody>
+  {% for r in reliability %}
+  <tr><td>{{ r.bucket }}</td><td class="n">{{ (r.stated * 100)|round|int }} %</td>
+      <td class="n">{{ (r.observed * 100)|round|int }} %</td><td class="n">{{ r.trades }}</td>
+      <td class="n {{ r.pnl|sign_css }}">{{ r.pnl|pct_fr }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="legend">Quand le modèle annonce 70 % de confiance, est-ce que ça arrive 70 % du temps ? Écart moyen : <strong>{{ (summary.calibration_error * 100)|round(1) if summary.calibration_error == summary.calibration_error else '—' }} points</strong>. Si la colonne « observé » ne monte pas avec la colonne « annoncé », la confiance ne veut rien dire et il ne faut pas dimensionner les positions dessus.</p>
+{% else %}
+<p class="muted">Pas encore assez de positions fermées pour juger la calibration.</p>
+{% endif %}
+</div>
+
+<h2>Décomposition du résultat</h2>
+<div class="grid two">
+{% for title, rows, note in [
+  ('Par actif', by_symbol, "Les vingt premiers par contribution."),
+  ('Par sens', by_side, "Long contre short : un modèle qui ne gagne que d'un côté n'est pas neutre."),
+  ('Par confiance', by_conviction, "La contribution devrait monter avec la confiance."),
+  ('Par durée de détention', by_duration, "Où l'échelle de ROI aide, et où elle coupe trop tôt.")] %}
+<div class="card">
+  <h3>{{ title }}</h3>
+  {% if rows %}
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Tranche</th><th class="n">Positions</th><th class="n">Contribution</th><th class="n">Moyenne</th><th class="n">Réussite</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr><td>{{ r.bucket }}</td><td class="n">{{ r.trades }}</td>
+        <td class="n {{ r.pnl|sign_css }}">{{ r.pnl|pct_fr }}</td>
+        <td class="n {{ r.mean|sign_css }}">{{ r.mean|pct_fr }}</td>
+        <td class="n">{{ (r.win_rate * 100)|round|int }} %</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="legend">{{ note }}</p>
+  {% else %}<p class="muted">rien à décomposer</p>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<h2>Les douze pires positions</h2>
+<div class="card">
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Actif</th><th>Sens</th><th>Entrée</th><th class="n">Barres</th><th class="n">Poids</th><th class="n">Excès</th><th class="n">Contribution</th></tr></thead>
+  <tbody>
+  {% for e in worst %}
+  <tr><td>{{ e.symbol }}</td><td>{{ 'achat' if e.side == 'long' else 'vente' }}</td>
+      <td class="time">{{ e.entry_ts|date_heure }}</td><td class="n">{{ e.bars_held }}</td>
+      <td class="n">{{ (e.weight * 100)|round(1) }} %</td>
+      <td class="n {{ e.excess_return|sign_css }}">{{ e.excess_return|pct_fr }}</td>
+      <td class="n neg">{{ e.pnl|pct_fr }}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">aucune position fermée</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="legend">C'est ici que se trouve la prochaine correction, plus souvent que dans les gagnantes.</p>
+</div>
+
+<h2>Journal des soixante dernières positions</h2>
+<div class="card">
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Actif</th><th>Sens</th><th>Entrée</th><th>Sortie</th><th class="n">Barres</th><th class="n">Confiance</th><th class="n">Excès</th><th class="n">Contribution</th></tr></thead>
+  <tbody>
+  {% for e in journal %}
+  <tr><td>{{ e.symbol }}</td><td>{{ 'achat' if e.side == 'long' else 'vente' }}</td>
+      <td class="time">{{ e.entry_ts|date_heure }}</td><td class="time">{{ e.exit_ts|date_heure }}</td>
+      <td class="n">{{ e.bars_held }}</td><td class="n">{{ (e.conviction * 100)|round|int }} %</td>
+      <td class="n {{ e.excess_return|sign_css }}">{{ e.excess_return|pct_fr }}</td>
+      <td class="n {{ e.pnl|sign_css }}">{{ e.pnl|pct_fr }}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">aucune position</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+{% endblock %}

@@ -21,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 from arena.explain import families
 from arena.settings import Settings
 from arena.store.db import connect
-from arena.web import fr, queries, svg
+from arena.web import attribution, fr, queries, svg
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -149,6 +149,29 @@ def create_app(settings: Settings) -> FastAPI:
         series = {k: v * queries.NAV0 for k, v in series.items()}
         chart = svg.line_chart(series, title=f"{page.card.title} : 10 000 € virtuels depuis le début", y_label="€")
         return render(request, "competitor.html", p=page, chart=chart, active="home")
+
+    @app.get("/competitors/{competitor_id}/attribution", response_class=HTMLResponse)
+    def attribution_page(
+        request: Request, competitor_id: int, conn: psycopg.Connection = Depends(get_conn)
+    ) -> HTMLResponse:
+        spec = queries.competitor_page(conn, competitor_id, _now())
+        if spec is None:
+            raise HTTPException(status_code=404, detail="unknown competitor")
+        eps = attribution.episodes(conn, competitor_id)
+        return render(
+            request,
+            "attribution.html",
+            p=spec,
+            summary=attribution.summary(eps),
+            by_symbol=attribution.decompose(eps, "symbol")[:20],
+            by_side=attribution.decompose(eps, "side"),
+            by_conviction=attribution.decompose(eps, "conviction"),
+            by_duration=attribution.decompose(eps, "bars_held"),
+            reliability=attribution.reliability(eps),
+            worst=attribution.worst(eps, 12),
+            journal=list(reversed(eps))[:60],
+            active="home",
+        )
 
     @app.get("/modeles", response_class=HTMLResponse)
     def modeles(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
