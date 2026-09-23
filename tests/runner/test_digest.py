@@ -90,7 +90,8 @@ def test_build_has_four_french_sections_and_changes(conn):
     assert "• xs_momentum v1 (Momentum relatif (classement)) : 31/42 jours, 1/100 décisions." in text
     assert "pas de champion à battre dans sa famille" in text  # no xs_momentum champion
     assert "• carry v2 (Carry de funding) : 31/42 jours, 0/100 décisions." in text
-    assert "en retard sur le champion" in text  # carry_v2 loses while carry_v1 wins
+    assert "derrière le champion" in text  # carry_v2 loses while carry_v1 wins
+    assert "Pas encore assez de données" in text or "certitude" in text
 
     # benchmarks and health
     assert "Repères : garder du BTC 30 j : +" in text

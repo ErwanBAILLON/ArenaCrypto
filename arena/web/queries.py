@@ -11,13 +11,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import psycopg
 from psycopg.types.json import Jsonb
 
 from arena.core.types import CompetitorSpec
 from arena.explain import families, verdicts
-from arena.judge.metrics import max_drawdown, sharpe, total_return
+from arena.judge.metrics import max_drawdown, sharpe, sharpe_se, total_return, track_record_verdict
 from arena.runner import drift, promotion
 from arena.runner.digest import WINDOW
 from arena.store import books as bstore
@@ -27,8 +28,26 @@ from arena.web import fr
 
 STALE_AFTER = timedelta(hours=3)
 CHART_DAYS = 90
-MIN_BARS_FOR_SHARPE = 24
-TRIAL_METRIC_KEYS = ("sharpe", "dsr", "bootstrap_p", "max_drawdown", "fold_sharpes")
+MIN_BARS_FOR_STATS = 24  # below this nothing is computed at all, not even a point estimate
+PROMOTION_CONFIDENCE = promotion.PROMOTION_CONFIDENCE
+TRIAL_METRIC_KEYS = ("sharpe", "dsr", "bootstrap_p", "max_drawdown", "pbo", "fold_sharpes")
+NULL_RANDOM_FAMILY = "null_random"
+
+
+def infer_ppy(index: pd.Index) -> int:
+    """Periods per year from the spacing of a book series (8760 hourly, 365 daily).
+
+    Read from the data rather than configured, so the two arenas cannot drift
+    apart: annualising daily classic-market bars by 8760 inflates every Sharpe
+    on the page by a factor of five.
+    """
+    idx = pd.DatetimeIndex(index)
+    if len(idx) < 3:
+        return int(promotion.PPY_HOURLY)
+    gap_hours = float(pd.Series(idx).diff().dt.total_seconds().median() or 3600.0) / 3600.0
+    if not np.isfinite(gap_hours) or gap_hours <= 0:
+        return int(promotion.PPY_HOURLY)
+    return max(1, int(round(365.0 * 24.0 / gap_hours)))
 
 
 @dataclass(frozen=True)
@@ -41,6 +60,7 @@ class Leaderboard:
     last_bar: datetime | None
     stale: bool
     chart_ids: list[int] = field(default_factory=list)
+    null95_by_universe: dict[str, float | None] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         """JSON-serialisable view (timestamps as ISO 8601)."""
@@ -48,6 +68,7 @@ class Leaderboard:
             "rows": self.rows,
             "allocation": [{"name": n, "weight": w} for n, w in self.allocation],
             "null95": self.null95,
+            "null95_by_universe": self.null95_by_universe,
             "last_bar": self.last_bar.isoformat() if self.last_bar else None,
             "stale": self.stale,
         }
@@ -78,16 +99,39 @@ def is_stale(last: datetime | None, now: datetime) -> bool:
 
 
 def leaderboard(conn: psycopg.Connection, now: datetime) -> Leaderboard:
-    """Same rows and ordering as the daily digest, plus ids and staleness."""
+    """The 30-day board, ranked on evidence rather than on a point estimate.
+
+    Each row carries its Sharpe **and** the standard error of that Sharpe, plus
+    ``psr`` = P(true Sharpe > the null models' 95th percentile) on the
+    autocorrelation-adjusted sample size, and how many bars are still missing
+    before that question can be answered. A four-day arena produces Sharpe
+    values around 15 with a standard error around 9; ranking on the number
+    alone put a coin flip in third place, which is why the board now sorts on
+    ``psr`` and shows the interval next to every estimate.
+
+    The thirty ``null_random`` competitors are collapsed into one row: they are
+    a distribution, not thirty contestants.
+    """
     specs = registry.list_competitors(conn, statuses=["champion", "challenger"])
     ids = [s.id for s in specs]
     rets = bstore.read_returns(conn, ids, now - WINDOW, now) if ids else pd.DataFrame()
+    series = {s.id: (rets[s.id].dropna() if s.id in rets.columns else pd.Series(dtype=float)) for s in specs}
+
+    null95_by_universe: dict[str, float | None] = {}
+    for universe in {s.universe for s in specs}:
+        cols = [s.id for s in specs if s.universe == universe and s.family == NULL_RANDOM_FAMILY and s.id in rets]
+        ppy = infer_ppy(rets[cols[0]].dropna().index) if cols and len(series[cols[0]]) > 2 else promotion.PPY_HOURLY
+        null95_by_universe[universe] = promotion.null_threshold(rets[cols], now - WINDOW, ppy) if cols else None
+
     rows: list[dict[str, Any]] = []
     for s in specs:
-        r = rets[s.id].dropna() if s.id in rets.columns else pd.Series(dtype=float)
+        if s.family == NULL_RANDOM_FAMILY:
+            continue  # collapsed below
+        r = series[s.id]
         last = bstore.last_book_row(conn, s.id)
         rows.append(
             {
+                **_row_stats(r, null95_by_universe.get(s.universe)),
                 "id": s.id,
                 "name": s.name,
                 "family": s.family,
@@ -95,23 +139,134 @@ def leaderboard(conn: psycopg.Connection, now: datetime) -> Leaderboard:
                 "status": s.status,
                 "role": s.role,
                 "universe": s.universe,
-                "sharpe_30d": sharpe(r) if len(r) > MIN_BARS_FOR_SHARPE else 0.0,
-                "ret_30d": total_return(r) if len(r) else 0.0,
-                "mdd_30d": max_drawdown(r) if len(r) else 0.0,
                 "nav": last.nav if last else 0.0,
-                "bars_30d": int(len(r)),
+                "count": 1,
             }
         )
-    rows.sort(key=lambda x: (x["universe"] != "crypto", x["role"] != "competitor", -x["sharpe_30d"]))
+    rows.extend(_null_rows(specs, series, null95_by_universe))
+    # evidence first, then the point estimate; a row with no evidence yet falls back on its book
+    rows.sort(
+        key=lambda x: (
+            x["universe"] != "crypto",
+            x["role"] != "competitor",
+            -(x["psr"] if x["psr"] is not None else -1.0),
+            -(x["sharpe_30d"] if x["sharpe_30d"] is not None else -1e9),
+        )
+    )
     names = {s.id: s.name for s in specs}
     alloc = [
         (names.get(cid, str(cid)), w) for cid, w in sorted(bstore.last_allocations(conn).items(), key=lambda kv: -kv[1])
     ]
-    nulls = [s.id for s in specs if s.family == "null_random" and s.id in rets.columns]
-    null95 = promotion.null_threshold(rets[nulls], now - WINDOW) if nulls else None
-    chart_ids = [s.id for s in specs if s.role == "benchmark" or (s.role == "competitor" and s.status == "champion")]
     last = last_bar(conn)
-    return Leaderboard(rows, alloc, null95, last, is_stale(last, now), chart_ids)
+    chart_ids = [s.id for s in specs if s.role == "benchmark" or (s.role == "competitor" and s.status == "champion")]
+    return Leaderboard(
+        rows,
+        alloc,
+        null95_by_universe.get("crypto"),
+        last,
+        is_stale(last, now),
+        chart_ids,
+        null95_by_universe,
+    )
+
+
+def _row_stats(r: pd.Series, null95: float | None) -> dict[str, Any]:
+    """Point estimate, its standard error, and what it would take to conclude."""
+    if len(r) <= MIN_BARS_FOR_STATS:
+        return {
+            "sharpe_30d": None,
+            "sharpe_se_30d": None,
+            "psr": None,
+            "ret_30d": total_return(r) if len(r) else 0.0,
+            "mdd_30d": max_drawdown(r) if len(r) else 0.0,
+            "bars_30d": int(len(r)),
+            "bars_needed": None,
+            "bars_missing": None,
+            "days_missing": None,
+            "conclusive": False,
+        }
+    ppy = infer_ppy(r.index)
+    verdict = track_record_verdict(r, null95 or 0.0, PROMOTION_CONFIDENCE, ppy)
+    missing = verdict["missing"]
+    return {
+        "sharpe_30d": verdict["sharpe"],
+        "sharpe_se_30d": sharpe_se(r, ppy),
+        "psr": verdict["psr"],
+        "ret_30d": total_return(r),
+        "mdd_30d": max_drawdown(r),
+        "bars_30d": int(len(r)),
+        "bars_needed": None if not np.isfinite(verdict["needed"]) else verdict["needed"],
+        "bars_missing": None if not np.isfinite(missing) else missing,
+        "days_missing": None if not np.isfinite(missing) else missing / max(1.0, ppy / 365.0),
+        "conclusive": bool(verdict["conclusive"]),
+    }
+
+
+def _null_rows(specs, series, null95_by_universe) -> list[dict[str, Any]]:
+    """One row per arena standing for its whole random-model distribution."""
+    out: list[dict[str, Any]] = []
+    for universe in sorted({s.universe for s in specs if s.family == NULL_RANDOM_FAMILY}):
+        members = [s for s in specs if s.universe == universe and s.family == NULL_RANDOM_FAMILY]
+        usable = [series[s.id] for s in members if len(series[s.id]) > MIN_BARS_FOR_STATS]
+        if not usable:
+            continue
+        ppy = infer_ppy(usable[0].index)
+        sharpes = [sharpe(r, ppy) for r in usable]
+        out.append(
+            {
+                "id": members[0].id,
+                "name": f"{len(members)} tirages",
+                "family": NULL_RANDOM_FAMILY,
+                "version": 1,
+                "status": "champion",
+                "role": "null",
+                "universe": universe,
+                "sharpe_30d": float(np.median(sharpes)),
+                "sharpe_se_30d": float(np.std(sharpes, ddof=1)) if len(sharpes) > 1 else None,
+                "psr": None,
+                "ret_30d": float(np.median([total_return(r) for r in usable])),
+                "mdd_30d": float(np.median([max_drawdown(r) for r in usable])),
+                "nav": 0.0,
+                "bars_30d": int(max(len(r) for r in usable)),
+                "bars_needed": None,
+                "bars_missing": None,
+                "days_missing": None,
+                "conclusive": False,
+                "count": len(members),
+                "null95": null95_by_universe.get(universe),
+            }
+        )
+    return out
+
+
+def maturity(conn: psycopg.Connection, board: Leaderboard, now: datetime) -> dict[str, Any]:
+    """How old the arena is, how much it has proven, and when it could first promote.
+
+    The front page opens with this because everything under it is a number that
+    looks like a result and is not one yet: on four days of hourly bars the
+    standard error of a Sharpe is larger than the Sharpe. Stating the age of the
+    experiment next to its output is the cheapest honesty available.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT min(b.ts) AS first FROM books b JOIN competitors c ON c.id = b.competitor_id"
+            " WHERE c.role = 'competitor'"
+        )
+        first = cur.fetchone()["first"]
+    competitors = [r for r in board.rows if r["role"] == "competitor"]
+    eligible = None
+    if first is not None:
+        eligible = pd.Timestamp(first) + timedelta(days=promotion.MIN_DAYS)
+        eligible = eligible.to_pydatetime()
+    return {
+        "days": (pd.Timestamp(now) - pd.Timestamp(first)).days if first is not None else 0,
+        "first_book": first,
+        "first_eligible": eligible if eligible is not None and eligible > now else None,
+        "proven": sum(1 for r in competitors if r["conclusive"]),
+        "competitors": len(competitors),
+        "min_days": promotion.MIN_DAYS,
+        "min_decisions": promotion.MIN_DECISIONS,
+    }
 
 
 def nav_series(conn: psycopg.Connection, ids: list[int], start: datetime, end: datetime) -> dict[str, pd.Series]:
@@ -229,15 +384,32 @@ def alerts(conn: psycopg.Connection, limit: int = 200) -> list[dict[str, Any]]:
         return rows
 
 
-def trials(conn: psycopg.Connection, limit: int = 200) -> list[dict[str, Any]]:
-    """Most recent trials across all families with metric highlights extracted."""
+SEARCH_KIND = "optimize"
+
+
+def trials(conn: psycopg.Connection, limit: int = 200, include_search: bool = False) -> list[dict[str, Any]]:
+    """Most recent trials with metric highlights extracted.
+
+    A weekly search writes one row per evaluation -- fifteen per family, five
+    families, every Sunday -- and none of them is a verdict on anything. They
+    are hidden unless asked for, so the page shows the gate decisions it is
+    named after rather than the sampling that led to them.
+    """
+    where = "" if include_search else " WHERE kind <> %(search)s"
     with conn.cursor() as cur:
         cur.execute(
             "SELECT id, competitor_id, family, kind, verdict, started_at, finished_at, notes, metrics"
-            " FROM trials ORDER BY started_at DESC, id DESC LIMIT %s",
-            (limit,),
+            f" FROM trials{where} ORDER BY started_at DESC, id DESC LIMIT %(limit)s",
+            {"limit": limit, "search": SEARCH_KIND},
         )
         return [_trial_row(r) for r in cur.fetchall()]
+
+
+def search_trial_count(conn: psycopg.Connection) -> int:
+    """How many parameter-search evaluations are hidden behind the filter."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) AS n FROM trials WHERE kind = %s", (SEARCH_KIND,))
+        return int(cur.fetchone()["n"])
 
 
 def _kv(d: dict[str, Any]) -> str:

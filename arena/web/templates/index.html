@@ -15,6 +15,15 @@
   <div class="muted small" style="margin-top:4px">Un « passage » = une évaluation de tous les modèles sur la dernière heure de cours. Les montants sont ceux d'un portefeuille virtuel de 10 000 € par modèle ; aucun ordre n'est jamais passé.</div>
 </div>
 
+{% if maturity %}
+<div class="banner warn">
+  <strong>L'arène tourne depuis {{ maturity.days }} jour{{ 's' if maturity.days != 1 }}.</strong>
+  {% if maturity.proven == 0 %}Aucun modèle n'a encore prouvé quoi que ce soit, et c'est l'état attendu : il faut environ six semaines de marche en avant avant qu'un résultat cesse d'être du bruit.{% else %}{{ maturity.proven }} modèle{{ 's' if maturity.proven != 1 }} {{ 'ont' if maturity.proven != 1 else 'a' }} dépassé le seuil de preuve.{% endif %}
+  {% if maturity.first_eligible %}Le premier prétendant devient éligible à la promotion le {{ maturity.first_eligible|date_fr }}.{% endif %}
+  <div class="muted small" style="margin-top:4px">Les gains et les Sharpe affichés plus bas sont réels mais pas encore significatifs. Un modèle n'est promu champion que s'il a passé le test d'entrée, tourné {{ maturity.min_days }} jours ou pris {{ maturity.min_decisions }} décisions, et battu la chance <em>et</em> le champion en place avec 95 % de certitude.</div>
+</div>
+{% endif %}
+
 <h2>Qui parle en ce moment</h2>
 {% for c in live.champions %}
 <div class="card">
@@ -61,13 +70,13 @@
   {% for s in live.sources %}
   <tr><td><span class="dot {{ s.level }}"></span>{{ s.label }}</td>
       <td>{{ s.data_ts|date_heure if s.data_ts else 'jamais' }}{% if s.count_24h is not none %} <span class="muted small">· {{ s.count_24h }} sur 24 h</span>{% endif %}</td>
-      <td>{{ s.fetched|ago(now) }}</td>
-      <td class="muted small">{% if s.level == 'ok' %}à jour{% elif s.level == 'warn' %}en retard{% else %}très en retard{% endif %}</td></tr>
+      <td>{{ s.last_ok|ago(now) if s.last_ok else 'jamais' }}</td>
+      <td class="muted small">{% if s.level == 'ok' %}à jour{% elif s.level == 'warn' %}en retard{% else %}très en retard{% endif %}{% if s.detail %} — {{ s.detail }}{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
-<p class="legend">Vert : mis à jour il y a moins de 2 h. Orange : moins de 6 h. Rouge : plus vieux ou jamais.</p>
+<p class="legend">« Dernière récupération » = la dernière fois qu'une interrogation a abouti, pas la dernière fois qu'une donnée a changé : un calendrier macro déjà connu n'écrit rien et se porte très bien. Chaque source a sa propre tolérance (de 3 h pour les cours à 12 h pour le funding, qui n'est publié que toutes les 8 h). Vert : bien dans les temps. Orange : à la limite. Rouge : au-delà, et une alerte part.</p>
 </div>
 
 <h2>Fil d'activité</h2>
@@ -102,26 +111,32 @@
 <div class="card">
 <div class="tablewrap">
 <table>
-  <thead><tr><th>Arène</th><th>Modèle</th><th>Statut</th><th class="n">Sharpe</th><th class="n">Résultat</th><th class="n">Pire creux</th><th class="n">Valeur du livre</th><th class="n">Heures mesurées</th></tr></thead>
+  <thead><tr><th>Arène</th><th>Modèle</th><th>Statut</th><th class="n">Sharpe ± marge</th><th class="n">Certitude</th><th>Conclusion</th><th class="n">Résultat</th><th class="n">Pire creux</th><th class="n">Valeur du livre</th><th class="n">Barres</th></tr></thead>
   <tbody>
   {% for r in board.rows %}
   <tr>
     <td><span class="pill">{{ r.universe|universe_fr }}</span></td>
-    <td><a href="/competitors/{{ r.id }}">{{ r.family|family_title }}</a> <span class="muted small">{{ r.name }}</span></td>
+    <td>{% if r.role == 'null' %}<span class="muted">Repère : aléatoire</span> <span class="muted small">{{ r.name }}</span>{% else %}<a href="/competitors/{{ r.id }}">{{ r.family|family_title }}</a> <span class="muted small">{{ r.name }}</span>{% endif %}</td>
     <td><span class="pill {{ status_css(r.role, r.status) }}">{{ status_fr(r.role, r.status) }}</span></td>
-    <td class="n">{{ r.sharpe_30d|num_fr }}</td>
+    <td class="n">{{ sharpe_fr(r.sharpe_30d, r.sharpe_se_30d) }}</td>
+    <td class="n">{{ psr_fr(r.psr) }}</td>
+    <td class="{{ 'pos' if r.conclusive else 'muted' }} small">{{ evidence_fr(r) }}</td>
     <td class="n {{ r.ret_30d|sign_css }}">{{ r.ret_30d|pct_fr }}</td>
     <td class="n">{{ r.mdd_30d|pct_fr }}</td>
-    <td class="n">{{ r.nav|round|int }} €</td>
+    <td class="n">{% if r.role == 'null' %}—{% else %}{{ r.nav|round|int }} €{% endif %}</td>
     <td class="n muted">{{ r.bars_30d }}</td>
   </tr>
   {% else %}
-  <tr><td colspan="8" class="muted">aucun champion ni prétendant pour l'instant</td></tr>
+  <tr><td colspan="10" class="muted">aucun champion ni prétendant pour l'instant</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
-<p class="legend">Sharpe = rendement ajusté du risque (plus c'est haut, plus le gain est régulier). La ligne « repère aléatoire 95 % » est ce que la chance obtient : {% if board.null95 is not none %}sur 30 jours elle vaut <strong>{{ board.null95|num_fr }}</strong>, et un modèle en dessous n'a rien prouvé{% else %}elle n'est pas encore calculée (pas assez d'historique des modèles aléatoires){% endif %}. Pire creux = la plus forte baisse depuis un sommet.</p>
+<p class="legend"><strong>Sharpe</strong> = rendement ajusté du risque, suivi de sa marge d'erreur. Sur quelques jours de données, la marge est plus grande que l'estimation : le chiffre ne veut encore rien dire, et c'est pour cela que le classement est trié sur la colonne suivante.
+<strong>Certitude</strong> = probabilité que le modèle batte vraiment la chance, calculée sur le nombre d'observations <em>indépendantes</em> (un modèle qui garde sa position une semaine ne fournit pas 168 preuves par semaine, il en fournit une). Il faut 95 % pour qu'un prétendant puisse devenir champion.
+<strong>Conclusion</strong> = temps qu'il faudrait encore, au rythme actuel, pour atteindre ces 95 %.
+{% if board.null95 is not none %}La chance (95e centile des modèles aléatoires) vaut <strong>{{ board.null95|num_fr }}</strong> sur 30 jours.{% else %}Le seuil de la chance n'est pas encore calculable.{% endif %}
+Pire creux = la plus forte baisse depuis un sommet.</p>
 {% if board.allocation %}
 <p class="legend">Avis de répartition publié sur Telegram (jamais un ordre) :
   {% for name, w in board.allocation %}{{ name }} {{ (w * 100)|round(0)|int }}%{{ ', ' if not loop.last }}{% endfor %}.</p>

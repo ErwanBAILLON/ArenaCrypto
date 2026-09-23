@@ -88,7 +88,16 @@ def _templates() -> Jinja2Templates:
             "family_title": _family_title,
         }
     )
-    t.env.globals.update({"status_fr": fr.status_fr, "status_css": fr.status_css, "REGIME_FR": fr.REGIME_FR_SHORT})
+    t.env.globals.update(
+        {
+            "status_fr": fr.status_fr,
+            "status_css": fr.status_css,
+            "REGIME_FR": fr.REGIME_FR_SHORT,
+            "sharpe_fr": fr.sharpe_fr,
+            "psr_fr": fr.psr_fr,
+            "evidence_fr": fr.evidence_fr,
+        }
+    )
     return t
 
 
@@ -119,7 +128,15 @@ def create_app(settings: Settings) -> FastAPI:
         chart = svg.line_chart(
             series, title=f"10 000 € virtuels : évolution sur {queries.CHART_DAYS} jours", y_label="valeur en €"
         )
-        return render(request, "index.html", live=live, board=board, chart=chart, active="home")
+        return render(
+            request,
+            "index.html",
+            live=live,
+            board=board,
+            chart=chart,
+            maturity=queries.maturity(conn, board, now),
+            active="home",
+        )
 
     @app.get("/competitors/{competitor_id}", response_class=HTMLResponse)
     def competitor(request: Request, competitor_id: int, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
@@ -142,8 +159,15 @@ def create_app(settings: Settings) -> FastAPI:
         return render(request, "alerts.html", alerts=queries.recent_alerts_fr(conn, 200), active="alerts")
 
     @app.get("/trials", response_class=HTMLResponse)
-    def trials(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
-        return render(request, "trials.html", trials=queries.trials(conn, 200), active="trials")
+    def trials(request: Request, tous: int = 0, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
+        return render(
+            request,
+            "trials.html",
+            trials=queries.trials(conn, 200, include_search=bool(tous)),
+            hidden=0 if tous else queries.search_trial_count(conn),
+            include_search=bool(tous),
+            active="trials",
+        )
 
     @app.get("/healthz")
     def healthz(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -184,8 +185,9 @@ def test_index_live_sections_in_french(client, seeded) -> None:
     # data sources with freshness levels
     assert "Bougies Binance" in r.text and 'class="dot ok"' in r.text and 'class="dot bad"' in r.text
     # leaderboard and chart still there
-    for name in ("trend_ts_v1", "meta_label_v1", "bench_btc_hold", "null_random_0"):
+    for name in ("trend_ts_v1", "meta_label_v1", "bench_btc_hold"):
         assert name in r.text
+    assert "1 tirage" in r.text  # the random models are one distribution, not N contestants
     assert 'data-series="trend_ts_v1"' in r.text and 'data-series="bench_btc_hold"' in r.text
     assert 'data-series="null_random_0"' not in r.text
     assert "prétendant" in r.text and "repère" in r.text
@@ -285,8 +287,113 @@ def test_healthz_reflects_book_freshness(client, conn) -> None:
 
 def test_leaderboard_json_shape(client, seeded) -> None:
     body = client.get("/api/leaderboard.json").json()
-    assert set(body) == {"rows", "allocation", "null95", "last_bar", "stale"}
+    assert set(body) == {"rows", "allocation", "null95", "null95_by_universe", "last_bar", "stale"}
     assert body["stale"] is False and body["last_bar"]
     row = next(r for r in body["rows"] if r["name"] == "trend_ts_v1")
     assert {"id", "status", "role", "sharpe_30d", "ret_30d", "mdd_30d", "nav", "bars_30d"} <= set(row)
+    # every point estimate now travels with the width of its interval and what it proves
+    assert {"sharpe_se_30d", "psr", "bars_needed", "bars_missing", "conclusive"} <= set(row)
     assert body["allocation"] == [{"name": "trend_ts_v1", "weight": 0.6}, {"name": "carry_v1", "weight": 0.4}]
+
+
+def test_every_estimate_travels_with_its_interval(client, seeded, conn) -> None:
+    """A Sharpe on the board is never alone: a point estimate is not a ranking key."""
+    board = queries.leaderboard(conn, NOW)
+    row = next(r for r in board.rows if r["name"] == "trend_ts_v1")
+    assert row["sharpe_se_30d"] is not None and row["sharpe_se_30d"] > 0
+    assert 0.0 <= row["psr"] <= 1.0
+    assert row["bars_30d"] == 72
+
+
+def test_a_noisy_book_is_not_conclusive_after_three_days(client, seeded, conn) -> None:
+    cid = registry.insert_competitor(
+        conn, CompetitorSpec(None, "noisy_v1", "trend_ts", 1, {}, status="challenger", gate_admitted=True)
+    )
+    rng = np.random.default_rng(7)
+    nav = 10_000.0
+    for i, ret in enumerate(rng.normal(0.0005, 0.006, 72)):
+        nav *= 1 + ret
+        bstore.write_book_row(conn, cid, BookRow(NOW - timedelta(hours=72 - i), nav, float(ret), 0.5, 0.0, 0.0, 0.0))
+    conn.commit()
+    row = next(r for r in queries.leaderboard(conn, NOW).rows if r["name"] == "noisy_v1")
+    assert row["conclusive"] is False
+    assert row["days_missing"] is None or row["days_missing"] > 30
+
+
+def test_short_series_get_no_estimate_at_all(client, seeded, conn) -> None:
+    cid = registry.insert_competitor(
+        conn, CompetitorSpec(None, "newborn_v1", "trend_ts", 1, {}, status="challenger", gate_admitted=True)
+    )
+    _book(conn, cid, NOW - timedelta(hours=3), 3, 0.0)
+    conn.commit()
+    row = next(r for r in queries.leaderboard(conn, NOW).rows if r["name"] == "newborn_v1")
+    assert row["sharpe_30d"] is None and row["psr"] is None
+
+
+def test_the_random_models_are_one_row_not_thirty(client, seeded, conn) -> None:
+    for i in range(1, 6):
+        cid = registry.insert_competitor(
+            conn,
+            CompetitorSpec(None, f"null_random_{i}", "null_random", 1, {"seed": i}, role="null", status="champion"),
+        )
+        _book(conn, cid, NOW - timedelta(hours=72), 72, 0.0)
+    conn.commit()
+    rows = queries.leaderboard(conn, NOW).rows
+    nulls = [r for r in rows if r["family"] == "null_random"]
+    assert len(nulls) == 1 and nulls[0]["count"] == 6
+    assert nulls[0]["name"] == "6 tirages"
+
+
+def test_maturity_says_how_young_the_arena_is(client, seeded, conn) -> None:
+    board = queries.leaderboard(conn, NOW)
+    m = queries.maturity(conn, board, NOW)
+    assert m["days"] == 3 and m["competitors"] > 0 and m["proven"] <= m["competitors"]
+    assert m["first_eligible"] is not None and m["first_eligible"] > NOW
+    assert m["min_days"] == 42
+
+
+def test_the_front_page_opens_by_saying_nothing_is_proven(client, seeded) -> None:
+    text = client.get("/").text
+    assert "L'arène tourne depuis" in text
+    assert "95 % de certitude" in text  # the promotion bar, stated before any number is shown
+    assert "Certitude" in text and "Conclusion" in text
+    assert "la marge est plus grande que l'estimation" in text
+
+
+def _trial(conn, family, kind, verdict, metrics=None):
+    return registry.add_trial(conn, family, kind, {}, metrics or {}, verdict, universe="crypto", finished=True)
+
+
+def test_the_trials_page_hides_the_search_sampling_by_default(client, seeded, conn) -> None:
+    _trial(conn, "carry", "walkforward", "admitted", {"sharpe": 1.2, "dsr": 0.95, "pbo": 0.2})
+    for _ in range(15):
+        _trial(conn, "carry", "optimize", "scored", {"mean_sharpe": 0.4})
+    conn.commit()
+    visible = queries.trials(conn)
+    assert [t["kind"] for t in visible] == ["walkforward", "walkforward"]  # the seeded one plus ours
+    assert len(queries.trials(conn, include_search=True)) == len(visible) + 15
+    assert queries.search_trial_count(conn) == 15
+
+    text = client.get("/trials").text
+    assert "15 évaluations de recherche de paramètres masquées" in text
+    assert "Généralise" in text and "80 %" in text  # 1 - pbo
+    assert "tout afficher" in text
+    assert len(client.get("/trials?tous=1").text) > len(text)
+
+
+def test_an_interrupted_trial_says_so_instead_of_running_forever(client, seeded, conn) -> None:
+    """~170 rows sat on this page as "en cours" since a killed challenger run."""
+    tid = registry.add_trial(conn, "price_action", "walkforward", {}, {}, None)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE trials SET started_at = now() - interval '3 days' WHERE id = %s", (tid,))
+    conn.commit()
+    assert registry.abandon_stale_trials(conn) == 1
+    conn.commit()
+    assert fr.verdict_fr("abandoned") == "interrompu"
+    assert "interrompu" in client.get("/trials").text
+
+
+def test_a_trial_that_just_started_is_left_alone(conn) -> None:
+    registry.add_trial(conn, "carry", "walkforward", {}, {}, None)
+    conn.commit()
+    assert registry.abandon_stale_trials(conn) == 0

@@ -2,24 +2,30 @@
 {% block title %}Arène · Tests{% endblock %}
 {% block content %}
 <h2>Les {{ trials|length }} derniers tests</h2>
-<p class="muted small">Avant d'entrer dans l'arène, chaque réglage est testé sur l'historique. « Admis » = il bat la chance et tient dans le temps ; « refusé » = pas assez convaincant.</p>
+<p class="muted small">Avant d'entrer dans l'arène, chaque réglage est testé sur l'historique. « Admis » = il bat la chance et tient dans le temps ; « refusé » = pas assez convaincant ; « évalué » = un point de la recherche de paramètres, pas un jugement ; « interrompu » = le test a été coupé avant la fin.</p>
+{% if include_search %}
+<p class="small"><a href="/trials">Masquer les évaluations de recherche</a></p>
+{% elif hidden %}
+<p class="small">{{ hidden }} évaluation{{ 's' if hidden != 1 }} de recherche de paramètres masquée{{ 's' if hidden != 1 }} — <a href="/trials?tous=1">tout afficher</a>. Elles comptent toutes dans le « pas dû au hasard » des candidats suivants : plus on cherche, plus la barre monte.</p>
+{% endif %}
 <div class="card">
 <div class="tablewrap">
 <table>
-  <thead><tr><th>Date</th><th>Famille</th><th>Type de test</th><th>Verdict</th><th class="n">Sharpe</th><th class="n">Pas dû au hasard</th><th class="n">Pire creux</th><th>Sharpe par période</th><th>Modèle</th></tr></thead>
+  <thead><tr><th>Date</th><th>Famille</th><th>Type de test</th><th>Verdict</th><th class="n">Sharpe</th><th class="n">Pas dû au hasard</th><th class="n">Généralise</th><th class="n">Pire creux</th><th>Sharpe par période</th><th>Modèle</th></tr></thead>
   <tbody>
   {% for t in trials %}
   <tr><td class="time">{{ t.started_at|date_heure }}</td><td>{{ t.family|family_title }}</td><td>{{ t.kind|trial_kind_fr }}</td>
       <td><span class="pill {{ t.verdict or '' }}">{{ t.verdict|verdict_fr }}</span></td>
       <td class="n">{{ t.highlights.sharpe|num_fr }}</td>
       <td class="n">{{ t.highlights.dsr|pct_plain if t.highlights.dsr is not none else 'n/a' }}</td>
+      <td class="n">{{ (1 - t.highlights.pbo)|pct_plain if t.highlights.pbo is not none else 'n/a' }}</td>
       <td class="n">{{ t.highlights.max_drawdown|pct_fr }}</td>
       <td><code>{{ t.highlights.fold_sharpes|num if t.highlights.fold_sharpes is not none else '' }}</code></td>
       <td>{% if t.competitor_id %}<a href="/competitors/{{ t.competitor_id }}">fiche</a>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
-  {% else %}<tr><td colspan="9" class="muted">aucun</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="10" class="muted">aucun</td></tr>{% endfor %}
   </tbody>
 </table>
 </div>
-<p class="legend">Sharpe = rendement ajusté du risque. « Pas dû au hasard » = probabilité que le résultat ne vienne pas du nombre d'essais (il en faut 90 %). Pire creux = plus forte baisse depuis un sommet pendant le test.</p>
+<p class="legend">Sharpe = rendement ajusté du risque. « Pas dû au hasard » = probabilité que le résultat ne vienne pas du nombre d'essais (il en faut 90 %). « Généralise » = probabilité que le meilleur réglage d'une recherche reste le meilleur sur une période qu'il n'a pas vue (il en faut 50 %) ; les deux mesurent des échecs différents, et il faut passer les deux. Pire creux = plus forte baisse depuis un sommet pendant le test.</p>
 </div>
 {% endblock %}

@@ -160,6 +160,8 @@ class ChallengerView:
     pnl_30d: float | None = None
     sharpe_30d: float | None = None
     champion_sharpe_30d: float | None = None
+    psr_vs_null: float | None = None  # P(true Sharpe > the null 95th percentile)
+    days_missing: float | None = None  # before that question can be answered at all
 
 
 @dataclass
@@ -206,19 +208,38 @@ def _champion_block(c: ChampionView) -> list[str]:
 
 
 def _challenger_block(c: ChallengerView, null95: float | None) -> list[str]:
+    """Two lines per challenger: where it stands, and whether that means anything yet.
+
+    "Son Sharpe dépasse celui du champion" is not a result on four days of
+    data, so the digest reports the probability behind the comparison and, when
+    there is none, how long it would take to get one.
+    """
     who = display_name(c.family, c.version)
     head = f"• {who} ({card(c.family).title}) : {c.days}/{c.days_required} jours, "
     head += f"{c.decisions}/{c.decisions_required} décisions"
     lines = [head + "."]
     tail = f"  30 j : {_money_or_na(c.pnl_30d)}"
     if c.sharpe_30d is not None and c.champion_sharpe_30d is not None:
-        tail += " ; " + ("en avance" if c.sharpe_30d > c.champion_sharpe_30d else "en retard") + " sur le champion"
+        tail += " ; " + ("devant" if c.sharpe_30d > c.champion_sharpe_30d else "derrière") + " le champion"
     elif c.sharpe_30d is not None:
         tail += " ; pas de champion à battre dans sa famille"
-    if c.sharpe_30d is not None and null95 is not None:
-        tail += " ; " + ("au-dessus" if c.sharpe_30d > null95 else "en dessous") + " de la chance"
     lines.append(tail + ".")
+    lines.append("  " + _evidence_sentence(c, null95))
     return lines
+
+
+def _evidence_sentence(c: ChallengerView, null95: float | None) -> str:
+    """What the numbers are allowed to claim, in one sentence."""
+    if c.psr_vs_null is None:
+        return "Pas encore assez de données pour dire quoi que ce soit."
+    pct = f"{c.psr_vs_null * 100:.0f} %"
+    if c.psr_vs_null >= 0.95:
+        return f"Au-dessus de la chance avec {pct} de certitude : le premier résultat solide de sa famille."
+    if c.days_missing is None:
+        return f"En dessous de la chance ({pct} de certitude) ; à ce rythme, ce ne sera jamais concluant."
+    if c.days_missing <= 0:
+        return f"Pas encore concluant ({pct} de certitude)."
+    return f"Pas concluant ({pct} de certitude) : il manque environ {c.days_missing:.0f} jours à ce rythme."
 
 
 def daily_digest(ctx: DigestContext) -> str:

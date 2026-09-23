@@ -94,9 +94,28 @@ def _ctx() -> DigestContext:
         changes=["carry v1 entre sur SUI (20 % du capital)."],
         challengers=[
             ChallengerView(
-                "xs_momentum_v2", "xs_momentum", 2, 31, 58, pnl_30d=-0.012, sharpe_30d=0.4, champion_sharpe_30d=1.5
+                "xs_momentum_v2",
+                "xs_momentum",
+                2,
+                31,
+                58,
+                pnl_30d=-0.012,
+                sharpe_30d=0.4,
+                champion_sharpe_30d=1.5,
+                psr_vs_null=0.31,
+                days_missing=940.0,
             ),
-            ChallengerView("news_v1", "news", 1, 5, 3, pnl_30d=0.03, sharpe_30d=2.0, champion_sharpe_30d=None),
+            ChallengerView(
+                "news_v1",
+                "news",
+                1,
+                5,
+                3,
+                pnl_30d=0.03,
+                sharpe_30d=2.0,
+                champion_sharpe_30d=None,
+                psr_vs_null=0.97,
+            ),
         ],
         btc_30d_eur=500.0,
         null95=1.23,
@@ -125,8 +144,11 @@ def test_digest_four_sections_in_french():
     assert "P&L hier n/d / 7 j -40 € / 30 j -120 € ; derrière « garder du BTC » de 620 €." in d
     assert "• carry v1 entre sur SUI (20 % du capital)." in d
     assert "• xs_momentum v2 (Momentum relatif (classement)) : 31/42 jours, 58/100 décisions." in d
-    assert "30 j : -120 € ; en retard sur le champion ; en dessous de la chance." in d
-    assert "30 j : +300 € ; pas de champion à battre dans sa famille ; au-dessus de la chance." in d
+    assert "30 j : -120 € ; derrière le champion." in d
+    assert "30 j : +300 € ; pas de champion à battre dans sa famille." in d
+    # the two sentences that replaced "son Sharpe est plus grand, donc il gagne"
+    assert "Pas concluant (31 % de certitude) : il manque environ 940 jours à ce rythme." in d
+    assert "Au-dessus de la chance avec 97 % de certitude" in d
     assert "• trend_ts_v3 perd de l'argent en direct" in d
     assert "Sharpe" not in d.split("Les prétendants :")[1].split("Repères")[0]  # in words, not numbers
 

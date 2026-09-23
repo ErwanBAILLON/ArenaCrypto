@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import pandas as pd
 import psycopg
 
-from arena.judge.metrics import sharpe
+from arena.judge.metrics import PPY_HOURLY, sharpe, track_record_verdict
 from arena.runner import promotion
 from arena.store import books as bstore
 from arena.store import registry
@@ -19,6 +20,31 @@ from arena.telegram.templates import ChallengerView, ChampionView, DigestContext
 
 WINDOW = timedelta(days=30)
 SIZE_STEP = 0.05  # a weight move below this is not a "change"
+MIN_BARS = 24
+CONFIDENCE = promotion.PROMOTION_CONFIDENCE
+
+
+def _ppy(index) -> int:
+    """Periods per year read from the bar spacing, so the two arenas are annualised apart."""
+    idx = pd.DatetimeIndex(index)
+    if len(idx) < 3:
+        return PPY_HOURLY
+    gap = float(pd.Series(idx).diff().dt.total_seconds().median() or 3600.0) / 3600.0
+    return max(1, int(round(365.0 * 24.0 / gap))) if gap > 0 else PPY_HOURLY
+
+
+def _evidence(r: pd.Series, null95: float | None) -> dict[str, float | None]:
+    """``psr_vs_null`` and the days still missing before the arena may conclude."""
+    if len(r) <= MIN_BARS:
+        return {"psr_vs_null": None, "days_missing": None}
+    ppy = _ppy(r.index)
+    v = track_record_verdict(r, null95 or 0.0, CONFIDENCE, ppy)
+    bars_per_day = max(1.0, ppy / 365.0)
+    missing = v["missing"]
+    return {
+        "psr_vs_null": float(v["psr"]),
+        "days_missing": None if not np.isfinite(missing) else float(missing) / bars_per_day,
+    }
 
 
 def _pnl(nav: pd.Series, now: datetime, days: int) -> float | None:
@@ -105,9 +131,12 @@ def build_context(conn: psycopg.Connection, now: datetime) -> DigestContext:
     ids = [s.id for s in specs]
     rets = bstore.read_returns(conn, ids, now - WINDOW, now) if ids else pd.DataFrame()
 
+    def _series(cid: int) -> pd.Series:
+        return rets[cid].dropna() if cid in rets.columns else pd.Series(dtype=float)
+
     def sharpe_30d(cid: int) -> float | None:
-        r = rets[cid].dropna() if cid in rets.columns else pd.Series(dtype=float)
-        return sharpe(r) if len(r) > 24 else None
+        r = _series(cid)
+        return sharpe(r, _ppy(r.index)) if len(r) > MIN_BARS else None
 
     btc_spec = next((s for s in specs if s.family == "bench_btc_hold"), None)
     btc_30d = _pnl(bstore.read_nav(conn, btc_spec.id, now - WINDOW, now), now, 30) if btc_spec else None
@@ -137,7 +166,8 @@ def build_context(conn: psycopg.Connection, now: datetime) -> DigestContext:
         )
 
     nulls = [s.id for s in specs if s.family == "null_random" and s.id in rets.columns]
-    null95 = promotion.null_threshold(rets[nulls], now - WINDOW) if nulls else None
+    null_ppy = _ppy(_series(nulls[0]).index) if nulls else PPY_HOURLY
+    null95 = promotion.null_threshold(rets[nulls], now - WINDOW, null_ppy) if nulls else None
 
     challengers: list[ChallengerView] = []
     for s in specs:
@@ -156,6 +186,7 @@ def build_context(conn: psycopg.Connection, now: datetime) -> DigestContext:
                 pnl_30d=_pnl(bstore.read_nav(conn, s.id, now - WINDOW, now), now, 30),
                 sharpe_30d=sharpe_30d(s.id),
                 champion_sharpe_30d=champ_sharpe_by_family.get(s.family),
+                **_evidence(_series(s.id), null95),
             )
         )
 

@@ -33,7 +33,13 @@ TRIAL_KIND_FR: dict[str, str] = {
     "retrain": "ré-entraînement",
 }
 
-VERDICT_FR: dict[str | None, str] = {"admitted": "admis", "rejected": "refusé", None: "en cours"}
+VERDICT_FR: dict[str | None, str] = {
+    "admitted": "admis",
+    "rejected": "refusé",
+    "scored": "évalué",  # one point of a parameter search, not a verdict on a competitor
+    "abandoned": "interrompu",  # the process that opened it died
+    None: "en cours",
+}
 
 # Data sources shown in « Sur quoi l'arène se base ».
 SOURCE_FR: dict[str, str] = {
@@ -196,3 +202,34 @@ UNIVERSE_FR = {"crypto": "Crypto", "classic": "Marchés classiques"}
 
 def universe_fr(name: str | None) -> str:
     return UNIVERSE_FR.get(str(name), str(name or "Crypto"))
+
+
+def sharpe_fr(value: float | None, se: float | None = None) -> str:
+    """``12,4 ± 9,6`` -- a point estimate never travels alone on this dashboard."""
+    if value is None:
+        return "n/d"
+    out = num_fr(value)
+    if se is not None and se == se:  # not NaN
+        out += f" ± {num_fr(se)}"
+    return out
+
+
+def psr_fr(p: float | None) -> str:
+    """Probability that a competitor genuinely beats chance, as a percentage."""
+    return "n/d" if p is None else f"{p * 100:.0f} %"
+
+
+def evidence_fr(row: dict) -> str:
+    """One short sentence on what a leaderboard line is allowed to claim."""
+    if row.get("psr") is None:
+        return "trop tôt"
+    if row.get("conclusive"):
+        return "prouvé"
+    days = row.get("days_missing")
+    if days is None:
+        return "jamais à ce rythme"
+    if days <= 0:
+        return "pas encore"
+    if days < 60:
+        return f"≈ {days:.0f} j restants"
+    return f"≈ {days / 30.0:.0f} mois restants"

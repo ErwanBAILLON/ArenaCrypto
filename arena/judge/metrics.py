@@ -87,7 +87,10 @@ def skew_kurt(r) -> tuple[float, float]:
     Returns ``(0, 3)`` when the series is degenerate (fewer than 3 points or zero variance).
     """
     a = _arr(r)
-    if a.size < 3 or a.std() == 0.0:
+    # "nearly identical" values make the third and fourth moments numerically
+    # meaningless (scipy warns about catastrophic cancellation); a series that
+    # flat has no skew and no tails worth naming.
+    if a.size < 3 or a.std() == 0.0 or np.ptp(a) <= 1e-12 * max(1.0, float(np.abs(a).max())):
         return 0.0, 3.0
     return float(stats.skew(a, bias=False)), float(stats.kurtosis(a, fisher=False, bias=False))
 
