@@ -131,12 +131,18 @@ class Snapshot:
                 nw[str(sym)] = f
         return cls(ts, symbols, c1h, fund, oi, hl_funding, nw, macro_events, bar_hours=bar_hours)
 
-    def at(self, ts: datetime) -> Snapshot:
-        """Cheap view of the same data at another decision time."""
+    def at(self, ts: datetime, symbols: list[str] | None = None) -> Snapshot:
+        """Cheap view of the same data at another decision time, optionally narrowed.
+
+        ``symbols`` restricts what the competitor can see, which is how a
+        point-in-time universe is enforced: on a bar where a symbol was not a
+        member, it simply is not in the snapshot, so no rule can trade it and
+        none has to know the membership rule exists.
+        """
         s = Snapshot.__new__(Snapshot)
         s.ts = _utc(ts)
         s.bar_hours = self.bar_hours
-        s.symbols = self.symbols
+        s.symbols = list(symbols) if symbols is not None else self.symbols
         s._c1h, s._funding, s._oi, s._hl, s._news, s._macro = (
             self._c1h,
             self._funding,

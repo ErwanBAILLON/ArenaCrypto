@@ -119,3 +119,62 @@ def test_speed_single_symbol_2000_bars():
         FeeModel(),
     )
     assert time.perf_counter() - t0 < 3.0
+
+
+# --------------------------------------------------------------------------- point-in-time universe
+
+
+def _pit_history(bars=24 * 60):
+    """OLD trades throughout; NEW only appears halfway."""
+    import numpy as np
+
+    idx = pd.date_range("2024-01-01", periods=bars, freq="1h", tz="UTC")
+    frames = []
+    for sym, first in (("OLD", 0), ("NEW", bars // 2)):
+        close = 100.0 * np.exp(np.cumsum(np.full(bars, 0.0001)))
+        frame = pd.DataFrame(
+            {"symbol": sym, "ts": idx, "open": close, "high": close, "low": close, "close": close, "volume": 1e5}
+        )
+        frames.append(frame.iloc[first:])
+    return HistoryFrames(candles=pd.concat(frames, ignore_index=True)), idx
+
+
+class _Greedy:
+    """Buys everything it can see, so the snapshot's symbol list is the only limit."""
+
+    def warmup_bars(self):
+        return 2
+
+    def decide(self, snap):
+        from arena.core.types import Target
+
+        return {s: Target(weight=0.4) for s in snap.symbols}
+
+
+def test_membership_hides_symbols_the_competitor_may_not_trade():
+    history, idx = _pit_history()
+    schedule = {idx[0]: ["OLD"], idx[len(idx) // 2]: ["OLD", "NEW"]}
+    result = run(_Greedy(), history, ["OLD", "NEW"], idx[0], idx[-1], FeeModel(), members_at=schedule)
+    held = {r.ts: r.gross for r in result.rows}
+    early = [g for ts, g in held.items() if ts < idx[len(idx) // 2]]
+    late = [g for ts, g in held.items() if ts > idx[len(idx) // 2] + pd.Timedelta(hours=2)]
+    assert max(early) == pytest.approx(0.4)  # one symbol only
+    assert max(late) == pytest.approx(0.8)  # both
+
+
+def test_without_a_schedule_everything_is_visible_as_before():
+    history, idx = _pit_history()
+    plain = run(_Greedy(), history, ["OLD", "NEW"], idx[0], idx[-1], FeeModel())
+    assert max(r.gross for r in plain.rows) == pytest.approx(0.8)
+
+
+def test_per_symbol_liquidity_reaches_the_book():
+    from arena.core.costs import ImpactModel, SymbolLiquidity
+
+    history, idx = _pit_history()
+    fees = FeeModel(impact=ImpactModel(capacity_nav=1_000_000.0))
+    thin = {idx[0]: {"OLD": SymbolLiquidity(1_000_000.0, 0.15), "NEW": SymbolLiquidity(1_000_000.0, 0.15)}}
+    deep = {idx[0]: {"OLD": SymbolLiquidity(1e9, 0.15), "NEW": SymbolLiquidity(1e9, 0.15)}}
+    cheap = run(_Greedy(), history, ["OLD", "NEW"], idx[0], idx[-1], fees, liquidity_at=deep)
+    dear = run(_Greedy(), history, ["OLD", "NEW"], idx[0], idx[-1], fees, liquidity_at=thin)
+    assert sum(r.fees for r in dear.rows) > 10 * sum(r.fees for r in cheap.rows)

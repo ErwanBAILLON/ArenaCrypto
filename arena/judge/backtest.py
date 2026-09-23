@@ -101,6 +101,14 @@ def _row_dict(cols: list[str], values: np.ndarray) -> dict[str, float]:
     return {s: float(v) for s, v in zip(cols, values, strict=True) if not np.isnan(v)}
 
 
+def _members_on(schedule: list, table: dict | None, ts):
+    """The entry in force at ``ts``: the latest scheduled date at or before it."""
+    if not table or not schedule:
+        return None
+    i = int(np.searchsorted(np.array(schedule), ts, side="right")) - 1
+    return table[schedule[i]] if i >= 0 else None
+
+
 def _has_targets(decision: Decision) -> bool:
     return any(t.weight != 0.0 for t in decision.values())
 
@@ -114,6 +122,8 @@ def run(
     fees: FeeModel,
     nav0: float = 10_000.0,
     bar_hours: int = 1,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> BacktestResult:
     """Step one ``Book`` over every hourly bar in ``[start, end]`` present in the candles.
 
@@ -131,8 +141,16 @@ def run(
     fund_arr = _wide_funding(history.funding, bars, cols).to_numpy()
     counts = np.cumsum(~np.isnan(close_arr), axis=0)  # bars available per symbol at each bar
     has_data = counts[-1] > 0 if len(bars) else np.zeros(len(cols), dtype=bool)
-    ref = REFERENCE_SYMBOL if REFERENCE_SYMBOL in cols else (cols[0] if cols else None)
-    ref_i = cols.index(ref) if ref is not None else None
+    # the reference is whatever has the longest history, so warm-up is not
+    # gated by a symbol that listed last month
+    if REFERENCE_SYMBOL in cols:
+        ref_i = cols.index(REFERENCE_SYMBOL)
+    elif cols:
+        ref_i = int(np.argmax(counts[-1])) if len(bars) else None
+    else:
+        ref_i = None
+    member_days = sorted(members_at) if members_at else []
+    liquidity_days = sorted(liquidity_at) if liquidity_at else []
 
     full = Snapshot.from_long(
         end_ts,
@@ -157,13 +175,15 @@ def run(
         if not (all_ready or ref_ready):
             continue
         ts = bars[i]
-        decision = competitor.decide(full.at(ts))
+        visible = _members_on(member_days, members_at, ts)
+        decision = competitor.decide(full.at(ts, visible))
         if _has_targets(decision):
             decisions += 1
         prices = _row_dict(cols, close_arr[i])
         prev_prices = _row_dict(cols, close_arr[i - 1]) if i > 0 else {}
         funding = {s: float(v) for s, v in zip(cols, fund_arr[i], strict=True) if v != 0.0}
-        rows.append(book.step(ts.to_pydatetime(), prices, prev_prices, funding, decision))
+        liquidity = _members_on(liquidity_days, liquidity_at, ts)
+        rows.append(book.step(ts.to_pydatetime(), prices, prev_prices, funding, decision, liquidity))
 
     idx = pd.DatetimeIndex([r.ts for r in rows], tz="UTC", name="ts")
     returns = pd.Series([r.ret for r in rows], index=idx, dtype=float, name="ret")
