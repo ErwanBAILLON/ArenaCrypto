@@ -146,3 +146,60 @@ from a family that failed.
   no custody, no liquidation mechanics, no funding slippage. Its Sharpe remains
   an upper bound, and it is the arena's only champion. That combination deserves
   more discomfort than it currently gets.
+
+## 4. First read on real data (entry gate, reduced power)
+
+Run 2026-09-23 on 21 months of Binance USD-M history (358 560 hourly candles,
+15 symbols, 2024-01-01 → 2026-09-23), anchored walk-forward with 90-day test
+folds, live fee model. **Reduced power, and it must be read as such**: 12 null
+draws instead of 50, so the null threshold is noisy; the `robust_regimes`
+criterion is skipped entirely, and it is the one that rejected most of the
+existing founders; `n_trials = 1`, which is honest for a first look at a new
+family and will not stay true.
+
+| family | verdict | Sharpe ± se | folds > 0 | DSR | bootstrap p | max DD | return | turnover |
+|---|---|---|---|---|---|---|---|---|
+| `carry` (incumbent) | admitted | 4.54 ± 1.00 | 67 % | 1.000 | 0.000 | 0.5 % | +5.3 % | 27 |
+| `funding_skew` | **admitted** | 1.04 ± 0.67 | 78 % | 0.939 | 0.053 | 12.5 % | +46.4 % | 103 |
+| `crowded_trend` | rejected | −0.04 ± 0.67 | 44 % | 0.479 | 0.520 | 58.1 % | −31.5 % | 346 |
+| `trend_ts` (control) | rejected | −0.28 ± 0.67 | 11 % | 0.340 | 0.661 | 68.3 % | −51.3 % | 333 |
+
+Null 95th percentile over 12 draws: 0.97.
+
+Four things worth saying out loud.
+
+**Crowding carries information, and both families show it.** `funding_skew`
+clears every criterion, and the filter reading improves `trend_ts` on *every*
+single metric: Sharpe −0.28 → −0.04, drawdown 68.3 % → 58.1 %, return −51.3 %
+→ −31.5 %, positive folds 11 % → 44 %. That is not noise, and it is not churn
+either: turnover barely moves (333 → 346), so the improvement comes from which
+legs are dropped, not from trading less. The pre-registered predictions offered
+signal *or* filter; the data says both, and only one of them clears the bar.
+
+**`crowded_trend` is rejected anyway, and should be.** A filter that turns a
+disastrous rule into a merely bad one has demonstrated the filter, not a
+competitor. It enters the arena as a challenger to be watched, not promoted,
+which is exactly what the gate is for.
+
+**`funding_skew` is admitted marginally, and the margin is the story.** Sharpe
+1.04 with a standard error of 0.67 puts the 95 % interval at roughly
+[−0.3, 2.4]; DSR 0.939 sits just above the 0.90 bar and will fall the moment
+the weekly search starts recording trials against this family; bootstrap p is
+0.053 against a 0.10 gate. This is the profile of something real and small, or
+of something lucky — and the full gate's regime robustness, skipped here, is
+precisely the test that separates those. Treat it as *admitted pending the full
+judge*, not as a discovery.
+
+**The incumbent's numbers are a warning, not a reassurance.** `carry` posts
+Sharpe 4.54 and a 0.5 % drawdown for +5.3 % over 21 months: about 3 %/year,
+near-riskless — *under a hedge assumed to be perfect*. No basis risk, no spot
+borrow, no liquidation mechanics. The arena's only champion is the family whose
+cost model is the most idealised, and its Sharpe is the one most inflated by
+that idealisation. `funding_skew` earned nine times the return at a quarter of
+the Sharpe, and it is the one whose costs are modelled honestly. That
+comparison is worth more attention than either number alone.
+
+**What to run before believing any of it**: `arena judge funding_skew` at full
+power (50 nulls, 120 robustness windows) on the production database, and
+`arena audit` afterwards to see what the admission is worth against every test
+the arena has run.
