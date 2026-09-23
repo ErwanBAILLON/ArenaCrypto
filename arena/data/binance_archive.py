@@ -149,6 +149,55 @@ def monthly_klines(client: httpx.Client, symbol: str, year: int, month: int, int
     return out.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
 
 
+def monthly_funding(client: httpx.Client, symbol: str, year: int, month: int) -> pd.DataFrame:
+    """One month of realised funding from the archive as DataFrame[ts, rate].
+
+    Columns are ``calc_time, funding_interval_hours, last_funding_rate``. The
+    interval is carried through because Binance moved several symbols from 8h
+    to 4h or 1h funding, and averaging rates of different intervals without
+    noticing is a silent factor-of-two error in every carry signal.
+    """
+    url = f"{ARCHIVE}/data/futures/um/monthly/fundingRate/{symbol}/{symbol}-fundingRate-{year:04d}-{month:02d}.zip"
+    resp = client.get(url)
+    if resp.status_code == 404:
+        return pd.DataFrame({"ts": pd.Series(dtype="datetime64[ns, UTC]"), "rate": pd.Series(dtype="float64")})
+    resp.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        text = zf.read(zf.namelist()[0]).decode("utf-8")
+    rows = [r for r in csv.reader(io.StringIO(text)) if r and not r[0].startswith("calc_time")]
+    if not rows:
+        return pd.DataFrame({"ts": pd.Series(dtype="datetime64[ns, UTC]"), "rate": pd.Series(dtype="float64")})
+    stamps = [int(float(r[0])) for r in rows]
+    stamps = [t // 1000 if t > 10**14 else t for t in stamps]
+    hours = [float(r[1]) if len(r) > 1 and r[1] else 8.0 for r in rows]
+    rates = [float(r[2]) for r in rows]
+    # normalise to an 8h-equivalent rate so signals are comparable across symbols
+    normalised = [rate * (8.0 / h) if h else rate for rate, h in zip(rates, hours, strict=True)]
+    out = pd.DataFrame(
+        {"ts": pd.to_datetime(pd.Series(stamps, dtype="int64"), unit="ms", utc=True), "rate": normalised}
+    )
+    return out.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
+
+
+def funding_history(client: httpx.Client, symbol: str, start: datetime, end: datetime) -> pd.DataFrame:
+    """Concatenated monthly funding archives covering ``[start, end]``."""
+    frames = []
+    for year, month in _months(start.date(), end.date()):
+        try:
+            frame = monthly_funding(client, symbol, year, month)
+        except Exception:
+            log.exception("funding archive failed for %s %04d-%02d", symbol, year, month)
+            continue
+        if not frame.empty:
+            frames.append(frame)
+    if not frames:
+        return pd.DataFrame({"ts": pd.Series(dtype="datetime64[ns, UTC]"), "rate": pd.Series(dtype="float64")})
+    out = pd.concat(frames, ignore_index=True)
+    lo, hi = _utc_ts(start), _utc_ts(end)
+    out = out[(out["ts"] >= lo) & (out["ts"] <= hi)]
+    return out.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
+
+
 def history(client: httpx.Client, symbol: str, start: datetime, end: datetime, interval: str = "1h") -> pd.DataFrame:
     """Concatenated monthly archives covering ``[start, end]`` for one symbol."""
     frames = []

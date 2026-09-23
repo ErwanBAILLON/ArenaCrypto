@@ -26,7 +26,6 @@ import pandas as pd
 from arena.competitors.base import HoldingCompetitor
 from arena.core.snapshot import Snapshot
 from arena.core.types import Decision
-from arena.features.panel import market_series
 from arena.labeling.barriers import DEFAULT_LADDER, RoiLadder
 
 
@@ -44,8 +43,9 @@ class LadderHoldingCompetitor(HoldingCompetitor):
 
     def __init__(self, params: dict[str, Any] | None = None, seed: int = 0, bar_hours: int = 1):
         super().__init__(params, seed, bar_hours)
-        self._entries: dict[str, dict[str, float]] = {}
+        self._entries: dict[str, dict] = {}
         self._cooldown: dict[str, int] = {}
+        self._basis: dict[str, dict[str, float]] = {}
 
     # ------------------------------------------------------------------ ladder
 
@@ -56,20 +56,36 @@ class LadderHoldingCompetitor(HoldingCompetitor):
     def _stop(self) -> float:
         return abs(float(self.params.get("stop", self.stop)))
 
-    def _excess_since(self, snap: Snapshot, symbol: str, entry: dict[str, float], market_now: float) -> float | None:
-        """Cumulative excess return of ``symbol`` over the universe since entry."""
-        price = snap.close(symbol)
-        entry_price, entry_market = entry.get("price"), entry.get("market")
-        if not price or not entry_price or not entry_market or market_now <= 0:
+    def _basket_return(self, snap: Snapshot, basis: dict[str, float]) -> float:
+        """Equal-weight return of the basket priced at entry, from entry to now.
+
+        The basket is frozen when the position opens, so this is O(symbols) with
+        one binary search each rather than a recomputed index over the whole
+        history. It is also the right object: the benchmark a position is judged
+        against should be the universe as it stood when the position was taken.
+        """
+        moves = []
+        for sym, entry_price in basis.items():
+            if not entry_price:
+                continue
+            now = snap.last_close(sym)
+            if now == now:  # not NaN
+                moves.append(now / entry_price - 1.0)
+        return float(sum(moves) / len(moves)) if moves else 0.0
+
+    def _excess_since(
+        self, snap: Snapshot, symbol: str, entry: dict[str, float], basis: dict[str, float]
+    ) -> float | None:
+        """Excess return of ``symbol`` over the frozen basket since entry."""
+        price = snap.last_close(symbol)
+        entry_price = entry.get("price")
+        if price != price or not price or not entry_price:
             return None
         symbol_leg = price / entry_price - 1.0
-        market_leg = market_now / entry_market - 1.0
-        return float(entry.get("side", 1.0)) * (symbol_leg - market_leg)
+        return float(entry.get("side", 1.0)) * (symbol_leg - self._basket_return(snap, basis))
 
     def decide(self, snap: Snapshot) -> Decision:
         base = super().decide(snap)
-        market = market_series(snap, snap.symbols)
-        market_now = float(market.iloc[-1]) if len(market) else 0.0
         ladder, stop = self._ladder(), self._stop()
 
         for sym in list(self._cooldown):
@@ -86,16 +102,19 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             side = 1.0 if target.weight > 0 else -1.0
             entry = self._entries.get(sym)
             if entry is None or entry.get("side", side) != side:
-                price = snap.close(sym)
-                if not price or market_now <= 0:
+                price = snap.last_close(sym)
+                if price != price or not price:
                     continue
-                self._entries[sym] = {"price": float(price), "market": market_now, "bars": 0.0, "side": side}
+                basis_key = snap.ts.isoformat()
+                if basis_key not in self._basis:
+                    self._basis[basis_key] = {s: c for s in snap.symbols if (c := snap.last_close(s)) == c and c}
+                self._entries[sym] = {"price": float(price), "bars": 0.0, "side": side, "basis": basis_key}
                 out[sym] = target
                 continue
 
             entry["bars"] = float(entry.get("bars", 0.0)) + 1.0
             held = int(entry["bars"])
-            excess = self._excess_since(snap, sym, entry, market_now)
+            excess = self._excess_since(snap, sym, entry, self._basis.get(str(entry.get("basis")), {}))
             if excess is None:
                 out[sym] = target
                 continue
@@ -108,6 +127,10 @@ class LadderHoldingCompetitor(HoldingCompetitor):
         for sym in list(self._entries):
             if sym not in out:
                 self._entries.pop(sym, None)
+        live = {str(e.get("basis")) for e in self._entries.values()}
+        for key in list(self._basis):
+            if key not in live:
+                del self._basis[key]  # nothing references this basket any more
         return out
 
     def _close(self, symbol: str, reason: str) -> None:
@@ -121,14 +144,19 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             **super().state(),
             "entries": {k: dict(v) for k, v in self._entries.items()},
             "cooldown": dict(self._cooldown),
+            "basis": {k: dict(v) for k, v in self._basis.items()},
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
         super().restore_state(state)
         self._entries = {
-            str(k): {kk: float(vv) for kk, vv in v.items()} for k, v in (state.get("entries") or {}).items()
+            str(k): {kk: (vv if kk == "basis" else float(vv)) for kk, vv in v.items()}
+            for k, v in (state.get("entries") or {}).items()
         }
         self._cooldown = {str(k): int(v) for k, v in (state.get("cooldown") or {}).items()}
+        self._basis = {
+            str(k): {str(kk): float(vv) for kk, vv in v.items()} for k, v in (state.get("basis") or {}).items()
+        }
 
 
 def neutral_book(

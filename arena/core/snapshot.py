@@ -217,6 +217,20 @@ class Snapshot:
         c = self.candles(symbol)
         return float(c["close"].iloc[-1]) if not c.empty else float("nan")
 
+    def last_close(self, symbol: str) -> float:
+        """Latest close at or before ``ts``, without materialising a window.
+
+        ``candles()`` slices and copies up to MAX_BARS rows and its cache is
+        per-Snapshot, so a fresh view per bar makes "what is the price now" cost
+        a window copy per symbol. Over a year of hourly bars and fifty symbols
+        that is billions of row copies. ``asof`` is a binary search.
+        """
+        base = self._c1h.get(symbol)
+        if base is None or base.empty:
+            return float("nan")
+        value = base["close"].asof(self.ts)
+        return float(value) if value == value else float("nan")
+
     def closes(self) -> pd.DataFrame:
         cols = {}
         for sym in self.symbols:

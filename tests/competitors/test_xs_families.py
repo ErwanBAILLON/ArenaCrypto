@@ -115,14 +115,24 @@ class TestLadder:
         clone.restore_state(comp.state())
         assert clone.state() == comp.state()
 
-    def test_exits_are_measured_against_the_market_not_the_price(self, history):
-        """A position that rose less than the universe has not won."""
+    def test_exits_are_measured_against_a_basket_frozen_at_entry(self, history):
+        """A position that rose less than the universe has not won, and the
+        universe it is judged against is the one that existed when it opened."""
         candles, funding = history
         comp = _Fixed()
         snap = _snap(history, sorted(candles["ts"].unique())[24 * 150])
         comp.decide(snap)
-        entry = comp.state()["entries"]["BTC"]
-        assert "market" in entry and entry["market"] > 0
+        state = comp.state()
+        key = state["entries"]["BTC"]["basis"]
+        basket = state["basis"][key]
+        assert set(basket) == set(SYMS) and all(v > 0 for v in basket.values())
+
+    def test_the_basket_is_dropped_once_nothing_references_it(self, history):
+        candles, funding = history
+        comp = _Fixed()
+        _walk(comp, candles, funding, 80, 24 * 150)
+        live = {e["basis"] for e in comp.state()["entries"].values()}
+        assert set(comp.state()["basis"]) == live
 
     def test_a_custom_ladder_comes_from_params(self):
         comp = _Fixed({"roi_steps": [[0, 0.5], [10, 0.0]]})
