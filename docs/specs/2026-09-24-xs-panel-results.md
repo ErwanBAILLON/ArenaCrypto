@@ -92,13 +92,57 @@ times the turnover. With realistic costs the "beat a coin flip" test collapses
 into a "trade less than a coin flip" test, which is far easier to pass. A
 turnover-matched null is the honest comparison and is reported below.
 
-## Is the edge just shorting coins that died?
+## Where the result actually comes from
 
-A survivorship-free universe contains symbols that went to zero, and a neutral
-book shorting the worst-ranked names could be harvesting delistings. That is a
-real effect but the least tradable one there is: borrow, liquidity and the
-exchange halting the market all bite hardest exactly there. The decomposition is
-in `§ side and survival` below.
+**The held-out year was a bear market**: the equal-weight universe returned
+−28.4 % with a 54.7 % drawdown, BTCUSDT −29.9 %. A neutral book returning +4.0 %
+through that is not beta, but it does raise two suspicions worth settling.
+
+**Is it shorting coins that died?** No. Splitting the legs:
+
+| leg | return | Sharpe | max DD | turnover |
+|---|---|---|---|---|
+| both | +4.0 % | 1.72 | 1.3 % | 30 |
+| long only | +3.9 % | 1.91 | 2.2 % | 13 |
+| short only | +0.8 % | 0.33 | 2.2 % | 17 |
+
+The long leg carries essentially all of it. The short leg made +0.8 % in a
+market down 28 %, which is *less* than a naive short of the same gross would
+have earned — the short selection has negative alpha. Whatever this is, it is
+not delisting harvesting, which is good news for tradability: the least
+tradable version of the result is the one that is not there.
+
+**Is it one signal wearing five hats?** Yes. Rank correlation between each
+signal and the next week's excess return, per rebalance date, signed as the
+rule uses it, over 147 dates:
+
+| signal | train IC | test IC | test t |
+|---|---|---|---|
+| `rank_ret_30d_skip_7d` (momentum) | −0.004 | −0.042 | −1.38 |
+| `rank_ret_7d` (one-week reversal) | −0.012 | −0.054 | −2.33 |
+| `rank_funding_crowding_z` (crowding) | −0.008 | −0.072 | −2.53 |
+| **`rank_vol_30d` (low volatility)** | **+0.142** | **+0.145** | **+5.20** |
+| `rank_donchian_position` | +0.025 | +0.049 | +2.34 |
+
+One signal does the work. **Low realised volatility predicts higher excess
+return in the cross-section of the fifty most liquid crypto perpetuals at a
+weekly horizon, with IC 0.145 and t = 5.2** — the crypto analogue of the
+low-volatility anomaly. Three of the other four are actively *wrong* out of
+sample, two of them significantly. The rule works despite them, not because of
+them, and the equal-weight composite's own test IC is only +0.005 because
+averaging one good signal with three bad ones destroys most of it.
+
+The important part is the first column. Low volatility scores +0.142 in a
+training era that contained the 2024 bull run and +0.145 in a bear year. It is
+not a regime artefact, which is a far stronger statement than the backtest
+alone supports.
+
+**What must not happen next.** The obvious move is to drop the three signals
+with negative test IC and report the improved number. That would be fitting to
+the held-out set, and the improved number would mean nothing. The correct move
+is to pre-register "a two-signal rule on low volatility and Donchian position
+beats the five-signal one" and test it on data that does not exist yet. Written
+down here so it is on the record before the temptation.
 
 ## Standing caveats
 
@@ -110,6 +154,10 @@ in `§ side and survival` below.
 - Winsorisation of the training target uses quantiles over the whole training
   set, including the rows that land in CV test folds. A small leak in the
   scaling of the target, not in its direction; worth closing.
+- The result rests on one signal with `t = 5.2` over 51 test dates. That is a
+  real t-statistic, but 51 weekly observations of a cross-sectional IC are not
+  51 independent observations of anything: volatility regimes persist for
+  months.
 - One held-out year is one path. The combinatorial machinery gives a
   distribution in training but the final comparison is a single window, and
   2025-09 to 2026-09 had its own character.
