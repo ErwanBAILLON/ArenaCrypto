@@ -1,0 +1,35 @@
+# The wide arena: a point-in-time top-50 of Binance USDT perpetuals.
+#
+# `symbols` is the *superset* -- every symbol that was ever a member -- and is
+# rebuilt by `arena universe-build`. Who is actually tradable on a given bar
+# comes from the stored `universe_members` table, not from this list, because a
+# fixed list is a survivorship bias with a config file around it: over 151
+# weeks, 402 distinct symbols passed through these 50 places, and only 18 of
+# the first week's members were still in it at the end.
+name: wide
+exchange: binance
+bar: "1h"
+binance_suffix: ""        # membership stores full exchange symbols (BTCUSDT)
+nav0: 10000.0
+history_start: "2023-11-01T00:00:00Z"
+
+membership:
+  enabled: true
+  top_n: 50
+  min_adv_usd: 5000000
+  window_days: 30
+
+# Costs scale with liquidity and are priced at a deployment size, not at the
+# 10 000 EUR the book actually holds -- at that size impact is negligible
+# everywhere, which silently flatters illiquid names.
+fees:
+  perp_taker: 0.0005
+  slippage: 0.0002        # only used when the impact model is off
+  spot_taker: 0.0010
+impact:
+  enabled: true
+  half_spread: 0.0002
+  k: 1.0
+  capacity_nav: 1000000
+
+symbols: []               # filled by `arena universe-build`

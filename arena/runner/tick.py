@@ -27,6 +27,7 @@ from arena.settings import Settings
 from arena.store import books as bstore
 from arena.store import candles as cstore
 from arena.store import health as hstore
+from arena.store import membership as mstore
 from arena.store import registry
 from arena.store.state import load_state, save_state
 
@@ -58,8 +59,14 @@ def decision_bar(now: datetime, bar_hours: int = 1) -> pd.Timestamp:
 
 
 def fees_of(universe: Universe) -> FeeModel:
+    """Fee model for this arena, with the per-symbol impact model when configured."""
     f = universe.fees
-    return FeeModel(perp_taker=f.perp_taker, slippage=f.slippage, spot_taker=f.spot_taker)
+    return FeeModel(
+        perp_taker=f.perp_taker,
+        slippage=f.slippage,
+        spot_taker=f.spot_taker,
+        impact=universe.impact_model(),
+    )
 
 
 def _with_model(conn: psycopg.Connection, spec: CompetitorSpec) -> CompetitorSpec:
@@ -141,17 +148,22 @@ def run(
     if history.candles.empty:
         return rep
     hl = cstore.latest_hl_funding(conn) if universe.exchange == "binance" else None
-    snap = snapshot_from_history(history, ts, universe.symbols, hl, bar_hours=universe.bar_hours)
+    # a point-in-time arena restricts the snapshot to that bar's members, so no
+    # competitor can trade a symbol that had not listed or had already died
+    members = mstore.members_at(conn, universe.name, ts) if universe.membership.enabled else []
+    visible = [m.symbol for m in members] if members else universe.symbols
+    liquidity = {m.symbol: m.liquidity for m in members} if members else None
+    snap = snapshot_from_history(history, ts, visible, hl, bar_hours=universe.bar_hours)
     closes = snap.closes()
     prices = {s: float(closes[s].iloc[-1]) for s in closes.columns if pd.notna(closes[s].iloc[-1])}
     regime = regime_label(snap, universe.reference)
-    fund_8h = {s: float(snap.funding(s).iloc[-1]) for s in universe.symbols if len(snap.funding(s))}
+    fund_8h = {s: float(snap.funding(s).iloc[-1]) for s in visible if len(snap.funding(s))}
     fees = fees_of(universe)
 
     specs = [s for s in registry.list_competitors(conn, statuses=list(ACTIVE), universe=universe.name)]
     for spec in specs:
         try:
-            _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, universe, rep)
+            _run_one(conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, universe, rep, liquidity)
             conn.commit()
         except Exception as exc:  # isolate competitors
             conn.rollback()
@@ -199,7 +211,19 @@ def record_tick(conn: psycopg.Connection, rep: TickReport) -> None:
 
 
 def _run_one(
-    conn, spec, snap, history, prices, closes, ts, regime, fund_8h, fees, universe: Universe, rep: TickReport
+    conn,
+    spec,
+    snap,
+    history,
+    prices,
+    closes,
+    ts,
+    regime,
+    fund_8h,
+    fees,
+    universe: Universe,
+    rep: TickReport,
+    liquidity: dict | None = None,
 ) -> None:
     last_row = bstore.last_book_row(conn, spec.id)
     if last_row is not None and pd.Timestamp(last_row.ts) >= ts:
@@ -224,7 +248,7 @@ def _run_one(
         if history.funding is not None and not history.funding.empty:
             f = history.funding[(history.funding["ts"] > prev_ts) & (history.funding["ts"] <= ts)]
             funding = f.groupby("symbol")["rate"].sum().to_dict()
-    row = book.step(ts, prices, prev_prices, funding, decision)
+    row = book.step(ts, prices, prev_prices, funding, decision, liquidity)
     exits = [s for s, (_, w) in prev_positions.items() if w != 0.0 and (s not in decision or decision[s].weight == 0.0)]
     bstore.write_targets(conn, spec.id, ts, decision, exits=exits)
     bstore.write_book_row(conn, spec.id, row)

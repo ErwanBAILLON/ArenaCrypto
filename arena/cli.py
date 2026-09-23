@@ -12,6 +12,7 @@ from arena.competitors.base import REGISTRY
 from arena.core.types import Alert, CompetitorSpec
 from arena.core.universe import load_universe
 from arena.judge import admission
+from arena.judge.gate import DEFAULT_GATE
 from arena.settings import Settings
 from arena.store import books as bstore
 from arena.store import registry
@@ -364,6 +365,105 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
     summary = f"Arena bootstrapped ({universe.name})\n" + "\n".join(lines) + f"\nnull 95th pct Sharpe {thr:.2f}"
     typer.echo(summary)
     sender.send(settings, templates.event_alert("info", summary))
+
+
+@app.command("universe-build")
+def universe_build(
+    since: str = typer.Option("", help="Override the universe's history_start"),
+    workers: int = typer.Option(12, help="Parallel archive downloads"),
+) -> None:
+    """Rebuild the point-in-time universe from Binance's public archive.
+
+    Probes every archived perpetual on daily bars -- including the delisted
+    ones, which is the whole point -- ranks them by trailing dollar volume at
+    every weekly date, and stores the membership. A universe built from today's
+    survivors is a survivorship bias with a config file around it.
+    """
+    from arena.runner import wide_backfill as wb
+    from arena.store import membership as mstore
+
+    _, conn, universe = _ctx()
+    if not universe.membership.enabled:
+        typer.echo(f"{universe.name}: membership is not enabled for this arena")
+        raise typer.Exit(code=1)
+    start = pd.Timestamp(since) if since else pd.Timestamp(universe.history_start)
+    end = _now()
+    typer.echo(f"probing archived perpetuals from {start.date()} to {end.date()}...")
+    build = wb.probe_and_select(start.to_pydatetime(), end, universe.membership_rule(), workers=workers)
+    written = 0
+    for ts, members in build.members_by_date.items():
+        written += mstore.write_members(conn, universe.name, ts, members)
+    conn.commit()
+    typer.echo(
+        f"{universe.name}: {build.candidates} candidates, {build.probed} with history, "
+        f"{len(build.members_by_date)} dates, {written} rows"
+    )
+    typer.echo(f"  {len(build.symbols)} symbols were members at least once, weekly churn {build.churn:.1%}")
+
+
+@app.command("train-xs")
+def train_xs_cmd(
+    family: str = typer.Option("xs_complex", help="Family to train"),
+    n_features: int = typer.Option(4000, help="Random Fourier feature width"),
+    gamma: float = typer.Option(0.02, help="RBF bandwidth"),
+    capacity: float = typer.Option(1_000_000.0, help="Deployment size the labels are costed at"),
+) -> None:
+    """Train the cross-sectional model and insert it as a challenger.
+
+    Labels are triple barriers on the excess return over the universe, net of
+    the per-symbol cost at ``capacity``; the shrinkage is chosen by purged
+    combinatorial cross-validation and the probability of backtest overfitting
+    is recorded alongside it. A run whose PBO says the winner does not
+    generalise inserts nothing.
+    """
+    from arena.challenger import train_xs as tx
+    from arena.runner.history import load_history
+    from arena.runner.tick import fees_of
+    from arena.store import membership as mstore
+
+    _, conn, universe = _ctx()
+    end = _now()
+    history = load_history(conn, universe, universe.history_start, end)
+    frame = mstore.membership_frame(conn, universe.name)
+    if frame.empty:
+        typer.echo("no stored membership: run `arena universe-build` first")
+        raise typer.Exit(code=1)
+    symbols_at = {ts: list(g["symbol"]) for ts, g in frame.groupby("ts")}
+    fees = fees_of(universe)
+    round_trip = 2 * fees.cost("perp", 0.05, None) if fees.impact else 2 * fees.perp_cost
+
+    data = tx.build_dataset(history.candles, history.funding, symbols_at, costs=round_trip)
+    typer.echo(f"dataset: {len(data)} rows, {len(data.columns)} features")
+    selection = tx.select(data, n_features=n_features, gamma=gamma)
+    typer.echo(
+        f"lambda {selection.lam}  cv spread {selection.score:+.5f}  "
+        f"pbo {selection.pbo.get('pbo', 1):.2f}  leak {selection.leakage['max_overlap_ns']}"
+    )
+    if selection.pbo.get("pbo", 1.0) > DEFAULT_GATE.max_pbo:
+        typer.echo("PBO says picking the best shrinkage does not generalise; nothing inserted")
+        raise typer.Exit(code=0)
+    model = tx.train(data, selection)
+    version = 1 + max(
+        [c.version for c in registry.list_competitors(conn, universe=universe.name) if c.family == family], default=0
+    )
+    cid = registry.insert_competitor(
+        conn,
+        CompetitorSpec(
+            None,
+            _uname(universe, f"{family}_v{version}"),
+            family,
+            version,
+            {},
+            status="challenger",
+            universe=universe.name,
+            gate_admitted=False,
+            rationale=f"trained: P={n_features} lambda={selection.lam} cv={selection.score:+.5f}",
+        ),
+    )
+    registry.save_model(conn, cid, model.to_json().encode(), model.metrics)
+    conn.commit()
+    typer.echo(f"inserted {family}_v{version} (id {cid}) with a {len(model.to_json()) // 1024} KB artefact")
+    typer.echo("not promotable until `arena judge` admits it")
 
 
 @app.command()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +19,26 @@ class Fees:
 
 
 @dataclass(frozen=True)
+class Membership:
+    """Point-in-time universe rules. When enabled, ``Universe.symbols`` is only a superset."""
+
+    enabled: bool = False
+    top_n: int = 50
+    min_adv_usd: float = 5_000_000.0
+    window_days: int = 30
+
+
+@dataclass(frozen=True)
+class Impact:
+    """Per-symbol execution cost. Disabled means the flat slippage, byte-identical to before."""
+
+    enabled: bool = False
+    half_spread: float = 0.0002
+    k: float = 1.0
+    capacity_nav: float = 1_000_000.0
+
+
+@dataclass(frozen=True)
 class Universe:
     symbols: list[str]
     binance_suffix: str
@@ -28,6 +48,8 @@ class Universe:
     name: str = "crypto"
     exchange: str = "binance"  # data source: "binance" (1h perps) or "yahoo" (1d classic markets)
     bar: str = "1h"  # "1h" or "1d": the decision bar of this universe
+    membership: Membership = field(default_factory=Membership)
+    impact: Impact = field(default_factory=Impact)
 
     @property
     def reference(self) -> str:
@@ -44,6 +66,23 @@ class Universe:
 
     def binance_symbol(self, symbol: str) -> str:
         return f"{symbol}{self.binance_suffix}"
+
+    def impact_model(self):
+        """The configured ``ImpactModel``, or None when this arena uses flat costs."""
+        from arena.core.costs import ImpactModel
+
+        if not self.impact.enabled:
+            return None
+        return ImpactModel(half_spread=self.impact.half_spread, k=self.impact.k, capacity_nav=self.impact.capacity_nav)
+
+    def membership_rule(self):
+        from arena.core.membership import MembershipRule
+
+        return MembershipRule(
+            top_n=self.membership.top_n,
+            min_adv_usd=self.membership.min_adv_usd,
+            window_days=self.membership.window_days,
+        )
 
     def hyperliquid_coin(self, symbol: str) -> str:
         return symbol
@@ -70,4 +109,6 @@ def load_universe(path: str | Path | None = None) -> Universe:
         name=str(raw.get("name", "crypto")),
         exchange=str(raw.get("exchange", "binance")),
         bar=str(raw.get("bar", "1h")),
+        membership=Membership(**{k: v for k, v in (raw.get("membership") or {}).items()}),
+        impact=Impact(**{k: v for k, v in (raw.get("impact") or {}).items()}),
     )
