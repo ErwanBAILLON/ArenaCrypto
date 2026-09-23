@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A survivorship-free universe.** `arena.data.binance_archive` reads Binance's public archive, which keeps delisted symbols, and `arena universe-build` ranks every archived perpetual — dead ones included — by trailing dollar volume at each weekly date. Measured on the real data: 402 distinct symbols passed through a 50-name universe over 151 weeks, weekly churn is 9.7 %, and only 18 of the first week's members were still in it at the end. Membership is stored (migration 0007) and read back, never recomputed.
+- **Per-symbol execution cost.** `arena.core.costs.ImpactModel` implements the square-root impact law, priced at a stated `capacity_nav` rather than at the 10 000 € the book holds — at that size impact is negligible everywhere, which silently flatters illiquid names. `k` is swept, not fitted; missing liquidity data costs 100 bps, never zero.
+- **Labels that describe a trade rather than a price move.** `arena.labeling` puts triple barriers on the excess return over the universe, net of costs, with the upper barrier as a ROI ladder in freqtrade's `minimal_roi` shape. Plus sample-uniqueness and trend-scanning weights, so N overlapping labels stop pretending to be N independent opinions.
+- **Purged combinatorial cross-validation** (`arena.judge.cpcv`), with a leakage report that must read zero.
+- **A ~100-column point-in-time feature panel** (`arena.features`), each raw column shipping with its cross-sectional rank.
+- **Two new families, differing only in the predictor**: `xs_sparse` (an unfitted rank composite, Nagel's control) and `xs_complex` (random Fourier features and ridge, the Kelly-Malamud-Zhou machinery applied to the panel). Both dollar-neutral, both closing on the ROI ladder that labelled them. `arena train-xs` trains the second and refuses to insert anything when PBO says the winner does not generalise.
+- **An attribution page** per competitor: P&L by symbol, side, conviction and holding time, the worst twelve trades, and a reliability diagram answering whether a stated 70 % confidence happens 70 % of the time. Derived from stored targets, so it works retroactively for every family.
+- `config/universe-wide.yaml`, a third arena using both of the above. The crypto and classic arenas are unchanged and no past verdict is revised.
+
+### Fixed
+- `Snapshot.at` can narrow the visible symbols, and the backtest takes `members_at` / `liquidity_at`, so a point-in-time universe can be scored at all. The warm-up reference was hardcoded to BTC and otherwise fell back to the alphabetically first symbol, which in a wide universe can be one that listed last month.
+- A ROI rung of 0 % is freqtrade's force-exit, not a profit target; reading it as one labelled a symbol that exactly matched the market as a winner.
+- Purging against the hull of all test rows emptied every combinatorial split whose blocks sat at opposite ends of the sample, and `DatetimeIndex.asi8` (microseconds here) mixed with `Timedelta.value` (always nanoseconds) turned a four-hour embargo into 198 days.
+- Winsorising after demeaning left a residual per-date mean in the training target — a market-timing component a dollar-neutral book cannot express.
+- Attribution measured excess against the symbols a competitor held rather than the universe, making a single-name position its own benchmark.
+- Six test directories lacked `__init__.py`, which only surfaced when two test modules finally shared a basename.
+
 ## [0.5.0] - 2026-09-23
 
 A round on the judge, and two families that test one hypothesis about funding.

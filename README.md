@@ -319,6 +319,30 @@ the chart expects a Secret holding a single `users` key (htpasswd lines, e.g.
 `openssl passwd -apr1`), projected from `web.basicAuth.vaultPath`; Traefik rejects
 multi-key secrets for BasicAuth.
 
+## Three arenas: crypto, classic markets, and the wide point-in-time one
+
+`config/universe.yaml` is the crypto arena (15 fixed Binance USDT perpetuals,
+1h bars, funding). `config/universe-classic.yaml` is the classic-markets arena
+(ETFs and FX from Yahoo, daily bars). `config/universe-wide.yaml` is the third:
+a **point-in-time top-50** of USDT perpetuals, rebuilt weekly from Binance's
+public archive.
+
+The wide arena exists because a fixed symbol list is a survivorship bias with a
+config file around it. Measured on the real data: over 151 weekly rebalances,
+**402 distinct symbols** passed through those 50 places, weekly churn is
+**9.7 %**, and only **18 of the first week's members** were still in the
+universe at the end. The archive keeps delisted symbols, so `arena
+universe-build` can rank the dead alongside the living, and a symbol whose bars
+stop arriving is closed at its last price rather than quietly evaporating.
+
+It also prices execution per symbol: the square-root impact law, evaluated at a
+stated `capacity_nav` rather than at the 10 000 € the book actually holds. At
+that size impact is negligible everywhere, which silently flatters illiquid
+names and answers a question nobody asked.
+
+Both features are off in the other two arenas, which are byte-identical to
+before they existed.
+
 ## Two arenas: crypto and classic markets
 
 `config/universe.yaml` is the crypto arena (Binance USDT perpetuals, 1h bars,
