@@ -18,14 +18,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from arena.core.costs import ImpactModel, SymbolLiquidity
 from arena.core.types import BookRow, Decision, Kind
 
 
 @dataclass(frozen=True)
 class FeeModel:
+    """Taker fees, plus slippage either flat or from a per-symbol impact model.
+
+    ``impact`` is opt-in and defaults to None, in which case every number this
+    book produces is byte-identical to before it existed -- no past verdict is
+    silently revised. With it, slippage is the square-root law evaluated at the
+    model's stated capacity, and a carry position pays it on **both** legs,
+    because both of them cross a book.
+    """
+
     perp_taker: float = 0.0005
     slippage: float = 0.0002
     spot_taker: float = 0.0010
+    impact: ImpactModel | None = None
 
     @property
     def perp_cost(self) -> float:
@@ -35,6 +46,15 @@ class FeeModel:
     def carry_cost(self) -> float:
         # both legs move: perp leg + spot leg
         return self.perp_taker + self.slippage + self.spot_taker
+
+    def cost(self, kind: Kind, weight_delta: float = 0.0, liq: SymbolLiquidity | None = None) -> float:
+        """Cost fraction of one unit of turnover in ``kind``, for this symbol and size."""
+        if self.impact is None:
+            return self.carry_cost if kind == "carry" else self.perp_cost
+        slip = self.impact.slippage(weight_delta, liq)
+        if kind == "carry":
+            return self.perp_taker + self.spot_taker + 2.0 * slip
+        return self.perp_taker + slip
 
 
 @dataclass
@@ -62,6 +82,7 @@ class Book:
         prev_prices: dict[str, float],
         funding: dict[str, float],
         targets: Decision,
+        liquidity: dict[str, SymbolLiquidity] | None = None,
     ) -> BookRow:
         # 1. mark to market with positions held over (prev_ts, ts]
         price_ret = 0.0
@@ -84,15 +105,16 @@ class Book:
         for sym in symbols:
             k_old, w_old = self.positions.get(sym, ("perp", 0.0))
             k_new, w_new = new.get(sym, (k_old, 0.0))
+            liq = (liquidity or {}).get(sym)
             if k_old != k_new and w_old != 0.0:
                 # kind change: close old fully, open new fully
                 d_close, d_open = abs(w_old), abs(w_new)
                 turnover += d_close + d_open
-                fees += d_close * self._cost(k_old) + d_open * self._cost(k_new)
+                fees += d_close * self.fees.cost(k_old, d_close, liq) + d_open * self.fees.cost(k_new, d_open, liq)
             else:
                 d = abs(w_new - w_old)
                 turnover += d
-                fees += d * self._cost(k_new)
+                fees += d * self.fees.cost(k_new, d, liq)
 
         ret = price_ret + funding_pnl - fees
         self.nav *= 1.0 + ret
@@ -101,4 +123,5 @@ class Book:
         return BookRow(ts=ts, nav=self.nav, ret=ret, gross=gross, turnover=turnover, fees=fees, funding_pnl=funding_pnl)
 
     def _cost(self, kind: Kind) -> float:
-        return self.fees.carry_cost if kind == "carry" else self.fees.perp_cost
+        """Flat cost of one unit of turnover; kept for callers that do not size trades."""
+        return self.fees.cost(kind)
