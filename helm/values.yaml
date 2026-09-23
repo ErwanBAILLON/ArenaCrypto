@@ -1,6 +1,7 @@
 image:
   repository: git.ebaillon.fr/bots/arena
-  tag: "0.5.0"
+  tag: "0.5.0-f1bfce3"   # sha-pinned: the bare version tag is re-pushed on every commit, so
+                         # "Synced" would report a build the node had already cached (README: tags are pinned)
   pullPolicy: IfNotPresent
 
 # Namespace already exists (PSA restricted, default-deny, allow-dns,

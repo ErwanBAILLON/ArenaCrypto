@@ -265,7 +265,7 @@ ExternalSecret and a NetworkPolicy. Values you must change for your cluster:
 | Value | Default (homelab) | Change to |
 |---|---|---|
 | `image.repository` | `git.ebaillon.fr/bots/arena` | your registry |
-| `image.tag` | current version | the tag your CI pushed |
+| `image.tag` | current version, sha-pinned (`0.5.0-<sha>`) | the tag your CI pushed. Use the sha-suffixed one: the bare version tag is re-pushed on every commit, so with `pullPolicy: IfNotPresent` ArgoCD reports Synced while the node keeps serving the build it already cached |
 | `namespace` | `crypto-research` | an existing namespace; the chart never creates it |
 | `secrets.clusterSecretStore` | `vault-backend` | your ExternalSecrets `ClusterSecretStore` |
 | `secrets.vaultPath` | `secret/arena` | the key in that store |

@@ -31,6 +31,7 @@ Design note: `docs/specs/2026-09-23-crowding-and-the-judge.md`.
 - `feed_health` table (migration 0006): ingestion records every attempt, and `drift.stale_feeds` watches all six sources with a tolerance per source, where only candles were watched before.
 
 ### Changed
+- `image.tag` is sha-pinned. The bare version tag is re-pushed on every commit, so with `pullPolicy: IfNotPresent` ArgoCD reported Synced while the node went on serving the build it had already cached — which is how a fix can be "deployed" and absent at the same time.
 - **The leaderboard ranks on evidence.** Its sort key was an annualised Sharpe computed on as few as 24 hourly bars, which live put a coin flip in third place and showed the random 95th percentile at 10.36. Every row now carries `Sharpe ± standard error`, the probability it beats the null models, and the time still needed to reach the 95 % promotion bar. The thirty random models collapse into one row.
 - The front page opens with the age of the experiment and what nothing-yet-proven means, before a single euro.
 - The Telegram digest replaced "en avance sur le champion" with a sentence containing a probability, and says how many days a challenger still needs.
