@@ -148,14 +148,19 @@ def admit(
     notes: str = "",
     robustness_n: int = N_ROBUSTNESS,
     bar_hours: int = 1,
+    universe: str = "crypto",
+    pbo: float | None = None,
 ) -> Admission:
     """Walk-forward ``family`` with ``params`` and record the trial. Never raises on rejection.
 
     ``robustness_n`` random windows (spec §8 step 7) are backtested with the
-    same competitor factory; ``0`` skips the step and its criterion.
+    same competitor factory; ``0`` skips the step and its criterion. ``pbo``,
+    when the caller measured one over its search, adds the ``pbo`` criterion.
+    The trial counter behind the deflated Sharpe is scoped to ``universe``:
+    a daily-bar search must not deflate an hourly-bar candidate.
     """
-    n_trials = registry.count_trials(conn, family) + 1
-    trial_id = registry.add_trial(conn, family, "walkforward", params, {}, None, notes=notes)
+    n_trials = registry.count_trials(conn, family, universe) + 1
+    trial_id = registry.add_trial(conn, family, "walkforward", params, {}, None, notes=notes, universe=universe)
     conn.commit()
     make = make_competitor or (lambda: REGISTRY[family](params, bar_hours=bar_hours))
     folds = run_walkforward(make, history, symbols, start, end, fees, bar_hours=bar_hours)
@@ -165,7 +170,7 @@ def admit(
         else None
     )
     ppy = 8760 // bar_hours
-    verdict = evaluate(folds, null_thr, n_trials, cfg, robustness=rob, ppy=ppy)
+    verdict = evaluate(folds, null_thr, n_trials, cfg, robustness=rob, ppy=ppy, pbo=pbo)
     from arena.judge.metrics import sharpe
 
     fold_sharpes = [sharpe(res.returns, ppy) for _, res in folds]

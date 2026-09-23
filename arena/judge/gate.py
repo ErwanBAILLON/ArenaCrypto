@@ -9,6 +9,9 @@ A competitor is admitted only if **all** criteria hold:
 * ``bootstrap_p``: stationary block bootstrap p-value of ``Sharpe <= 0`` below 0.10;
 * ``max_drawdown``: below 30 %;
 * ``min_decisions``: at least 30 bars with a non-flat target;
+* ``pbo`` (only when a probability of backtest overfitting is supplied by the
+  caller, see ``metrics.pbo_cscv``): the configuration that wins in sample must
+  generalise out of sample more often than a coin flip;
 * ``robust_regimes`` (only when a robustness dict is supplied, see
   ``arena.judge.robustness``): at least ``min_regimes_positive`` market regimes
   (among those with >= ``MIN_REGIME_WINDOWS`` random windows) show a win rate
@@ -45,6 +48,7 @@ class GateConfig:
     null_quantile: float = 0.95
     min_regimes_positive: int = 2
     min_regime_win_rate: float = 0.5
+    max_pbo: float = 0.50
 
 
 DEFAULT_GATE = GateConfig()
@@ -121,11 +125,18 @@ def evaluate(
     cfg: GateConfig = DEFAULT_GATE,
     robustness: dict[str, Any] | None = None,
     ppy: int = m.PPY_HOURLY,
+    pbo: float | None = None,
 ) -> Verdict:
     """Concatenate the test-window returns of every fold and apply the §8 criteria.
 
     The DSR is computed on the per-period Sharpe ``mean/std`` of the
     concatenated series with its sample skew/kurtosis and ``T = len(r)``.
+    ``pbo`` is the probability of backtest overfitting measured over the whole
+    parameter search this candidate won (``metrics.pbo_cscv``); it is only
+    available on the optimisation path, and adds the ``pbo`` criterion when so.
+    The deflated Sharpe already penalises the number of tries; PBO asks the
+    different question of whether picking the best try generalises at all.
+
     When ``robustness`` (output of ``robustness.run_robustness``) is given, the
     ``robust_regimes`` criterion is added, the dict is stored under
     ``metrics["robustness"]`` (with the gate's reading of it) and
@@ -161,6 +172,9 @@ def evaluate(
         "max_drawdown": metrics["max_drawdown"] < cfg.max_drawdown,
         "min_decisions": metrics["decisions"] >= cfg.min_decisions,
     }
+    if pbo is not None:
+        metrics["pbo"] = float(pbo)
+        checks["pbo"] = float(pbo) <= cfg.max_pbo
     if robustness is not None:
         passed, positive, judged = robust_regimes(robustness, cfg)
         metrics["robustness"] = {

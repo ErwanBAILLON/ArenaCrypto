@@ -166,11 +166,18 @@ def _history_and_null(conn, universe, end: datetime):
 def judge(
     family: str = typer.Argument(..., help="Family to gate with default params (or NAME of a competitor)"),
 ) -> None:
-    """Run the entry gate and print the verdict (records a trial)."""
+    """Run the entry gate and print the verdict (records a trial).
+
+    Given the NAME of a competitor already in the arena, this is also how a
+    model the gate once refused becomes promotable again: an admitted verdict
+    sets its ``gate_admitted`` flag (see ``arena.runner.promotion``).
+    """
     _, conn, universe = _ctx()
     spec = registry.get_competitor(conn, family)
     fam, params = (spec.family, spec.params) if spec else (family, {})
     end = _now()
+    registry.abandon_stale_trials(conn)
+    conn.commit()
     history, fees, start, thr = _history_and_null(conn, universe, end)
     adm = admission.admit(
         conn,
@@ -184,11 +191,16 @@ def judge(
         thr,
         notes="cli judge",
         bar_hours=universe.bar_hours,
+        universe=universe.name,
     )
     v = adm.verdict
     typer.echo(f"{fam}: {'ADMITTED' if v.admitted else 'REJECTED'} failed={v.failed}")
     for k, val in v.metrics.items():
         typer.echo(f"  {k}: {val:.4f}" if isinstance(val, float) else f"  {k}: {val}")
+    if spec is not None and spec.id is not None and spec.gate_admitted != v.admitted:
+        registry.set_gate_admitted(conn, spec.id, v.admitted)
+        conn.commit()
+        typer.echo(f"  gate_admitted: {spec.gate_admitted} -> {v.admitted} (promotable: {v.admitted})")
 
 
 @app.command()
@@ -212,6 +224,8 @@ def challenger(family: str = typer.Option("", help="Restrict to one rule family"
             thr,
             n_trials=n_trials,
             seed=int(end.timestamp()) % 10_000,
+            bar_hours=universe.bar_hours,
+            universe=universe.name,
         )
         typer.echo(f"{fam}: {'challenger ' + spec.name if spec else 'no new challenger'}")
         if spec:
