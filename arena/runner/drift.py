@@ -16,6 +16,50 @@ RETURN_FLOOR = -0.10
 SILENT_DAYS = 7
 
 
+# Hours a source may go without a successful fetch before it is worth a message.
+# Tick-driven sources are multiplied by the arena's bar size, so a classic-market
+# feed polled once a day is not reported dead every hour.
+FEED_MAX_AGE_HOURS: dict[str, float] = {
+    "candles": 3,
+    "funding": 12,  # Binance stamps one rate per 8h; a fetch that finds nothing new is normal
+    "open_interest": 3,
+    "hl_snapshots": 3,
+    "articles": 3,  # the news job runs every 30 min
+    "macro_events": 6,
+}
+TICK_DRIVEN = frozenset({"candles", "funding", "open_interest", "hl_snapshots"})
+
+
+def feed_max_age(source: str, bar_hours: int = 1) -> float:
+    """Tolerated hours since the last successful fetch of ``source`` in this arena."""
+    base = FEED_MAX_AGE_HOURS.get(source, 6)
+    return base * bar_hours if source in TICK_DRIVEN else base
+
+
+def stale_feeds(rows: list[dict], now: datetime, bar_hours: int = 1) -> list[Alert]:
+    """One alert per data source that has not answered in time, or answered with an error.
+
+    Only ``candles`` used to be watched, which is how the arena could keep
+    trading on a funding feed that had stopped -- funding being the raw material
+    of the only family it has ever admitted.
+    """
+    out: list[Alert] = []
+    for row in rows:
+        source = str(row["source"])
+        last_ok = row.get("last_ok_at")
+        limit = feed_max_age(source, bar_hours)
+        if last_ok is None:
+            out.append(Alert(kind="stale", symbol=source, payload={"detail": f"{source}: never fetched successfully"}))
+            continue
+        age = (pd.Timestamp(now) - pd.Timestamp(last_ok)) / pd.Timedelta(hours=1)
+        if age > limit:
+            detail = f"{source}: last successful fetch {age:.1f}h ago (limit {limit:.0f}h)"
+            if row.get("detail"):
+                detail += f" -- {row['detail']}"
+            out.append(Alert(kind="stale", symbol=source, payload={"detail": detail, "age_hours": round(age, 1)}))
+    return out
+
+
 def stale_data(last_bar: datetime | None, now: datetime, max_lag_bars: int = 2) -> Alert | None:
     if last_bar is None:
         return Alert(kind="stale", payload={"detail": "no candles at all"})

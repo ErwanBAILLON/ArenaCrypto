@@ -13,6 +13,7 @@ from arena.core.types import Alert, BookRow, CompetitorSpec, Target
 from arena.settings import Settings
 from arena.store import books as bstore
 from arena.store import candles as cstore
+from arena.store import health as hstore
 from arena.store import registry
 from arena.web import fr, queries
 
@@ -145,6 +146,15 @@ def seeded(conn):
             "INSERT INTO articles (source, url, title, published_at, fetched_at) VALUES ('x', 'u', 't', %s, %s)",
             (NOW - timedelta(hours=1), NOW - timedelta(hours=1)),
         )
+    # the freshness panel reads the ingestion log, not max(fetched_at) of each table
+    for source, ok_ago in (("candles", 0.5), ("funding", 20), ("articles", 1), ("open_interest", 0.5)):
+        hstore.record_fetch(
+            conn,
+            source,
+            last_data_ts=NOW - timedelta(hours=ok_ago),
+            rows_written=1,
+            now=NOW - timedelta(hours=ok_ago),
+        )
     conn.commit()
     return {"trend": trend, "carry": carry, "meta": meta, "bench": bench, "null": null}
 
@@ -244,7 +254,18 @@ def test_queries_pnl_and_positions(conn, seeded) -> None:
     assert queries.positions_diff_24h(conn, seeded["carry"], "carry", NOW) == []
     levels = {s["key"]: s["level"] for s in queries.sources_freshness(conn, NOW)}
     assert levels["candles"] == "ok" and levels["funding"] == "bad" and levels["articles"] == "ok"
-    assert levels["macro_events"] == "bad"
+    assert levels["macro_events"] == "bad"  # never fetched
+    assert levels["hl_snapshots"] == "bad"  # never fetched
+
+
+def test_a_source_that_writes_nothing_is_still_healthy(conn, seeded) -> None:
+    """The macro calendar of a week already stored writes no row and used to read as dead."""
+    hstore.record_fetch(
+        conn, "macro_events", rows_written=0, detail="no high-impact event this week", now=NOW - timedelta(hours=1)
+    )
+    conn.commit()
+    row = next(s for s in queries.sources_freshness(conn, NOW) if s["key"] == "macro_events")
+    assert row["level"] == "ok" and row["ok"] is True
     assert fr.status_fr("competitor", "challenger") == "prétendant" and fr.kind_fr("stale") == "Données en retard"
 
 

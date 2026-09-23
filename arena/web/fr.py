@@ -74,11 +74,20 @@ def status_css(role: str, status: str) -> str:
     return status if role == "competitor" else role
 
 
-def freshness_level(age: timedelta | None) -> str:
-    """``ok`` (< 2 h), ``warn`` (< 6 h) or ``bad`` (older or never)."""
+def freshness_level(age: timedelta | None, limit_hours: float | None = None) -> str:
+    """``ok`` / ``warn`` / ``bad`` for the age of a source's last successful fetch.
+
+    With ``limit_hours`` (what ``arena.runner.drift`` would alert on), the
+    thresholds follow that source's own cadence: green below two thirds of it,
+    orange up to it, red past it. Without, the flat 2 h / 6 h reading is kept.
+    """
     if age is None:
         return "bad"
     hours = age.total_seconds() / 3600
+    if limit_hours is not None and limit_hours > 0:
+        if hours < 2.0 / 3.0 * limit_hours:
+            return "ok"
+        return "warn" if hours <= limit_hours else "bad"
     if hours < FRESH_HOURS:
         return "ok"
     if hours < WARM_HOURS:

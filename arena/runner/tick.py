@@ -26,6 +26,7 @@ from arena.runner.ingest import ingest_market
 from arena.settings import Settings
 from arena.store import books as bstore
 from arena.store import candles as cstore
+from arena.store import health as hstore
 from arena.store import registry
 from arena.store.state import load_state, save_state
 
@@ -34,6 +35,7 @@ log = logging.getLogger(__name__)
 HISTORY_DAYS = 260  # covers the largest warm-up (regime: ~210 days) with margin, whatever the bar size
 SIGNAL_MIN_DELTA = 0.25
 SIGNAL_COOLDOWN = timedelta(hours=4)
+FEED_ALERT_COOLDOWN = timedelta(hours=12)
 ALLOC_WINDOW = timedelta(days=60)
 ACTIVE = ("champion", "challenger")
 
@@ -125,7 +127,11 @@ def run(
     stale = drift.stale_data(last_bar, now, max_lag_bars=2 if universe.bar_hours == 1 else 4 * 24)
     if stale:
         bstore.add_alert(conn, stale)
-        conn.commit()
+    for feed_alert in drift.stale_feeds(hstore.read_all(conn, universe.name), now, universe.bar_hours):
+        # one message per source per half-day, not one per tick
+        if not bstore.recent_alert_exists(conn, "stale", None, feed_alert.symbol, now - FEED_ALERT_COOLDOWN):
+            bstore.add_alert(conn, feed_alert)
+    conn.commit()
     if last_bar is None:
         return rep
     ts = min(ts, pd.Timestamp(last_bar))

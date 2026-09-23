@@ -154,3 +154,45 @@ class TestPromotion:
 def test_surplus_challengers_oldest_first():
     ch = [_spec(i) for i in (5, 3, 9, 7, 1)]
     assert [s.id for s in surplus_challengers(ch)] == [1, 3]
+
+
+class TestStaleFeeds:
+    def _row(self, source, hours_ago, ok=True, detail=""):
+        return {
+            "source": source,
+            "last_ok_at": None if hours_ago is None else NOW - pd.Timedelta(hours=hours_ago),
+            "ok": ok,
+            "detail": detail,
+        }
+
+    def test_a_fresh_feed_is_quiet(self):
+        assert drift.stale_feeds([self._row("candles", 1)], NOW) == []
+
+    def test_a_dead_feed_is_reported_by_name(self):
+        alerts = drift.stale_feeds([self._row("funding", 48)], NOW)
+        assert len(alerts) == 1 and alerts[0].kind == "stale" and alerts[0].symbol == "funding"
+        assert "48.0h ago" in alerts[0].payload["detail"]
+
+    def test_funding_is_not_the_only_watched_source(self):
+        """Only candles used to be watched; the arena could trade on a dead funding feed."""
+        rows = [self._row(s, 48) for s in ("candles", "funding", "open_interest", "hl_snapshots", "macro_events")]
+        assert {a.symbol for a in drift.stale_feeds(rows, NOW)} == {
+            "candles",
+            "funding",
+            "open_interest",
+            "hl_snapshots",
+            "macro_events",
+        }
+
+    def test_never_fetched_is_reported(self):
+        alerts = drift.stale_feeds([self._row("articles", None)], NOW)
+        assert "never fetched" in alerts[0].payload["detail"]
+
+    def test_a_daily_arena_is_not_declared_dead_every_hour(self):
+        rows = [self._row("candles", 20)]
+        assert drift.stale_feeds(rows, NOW, bar_hours=1) != []
+        assert drift.stale_feeds(rows, NOW, bar_hours=24) == []
+
+    def test_the_failure_detail_travels_with_the_alert(self):
+        alerts = drift.stale_feeds([self._row("candles", 10, ok=False, detail="15/15 symbols failed")], NOW)
+        assert "15/15 symbols failed" in alerts[0].payload["detail"]

@@ -18,9 +18,10 @@ from psycopg.types.json import Jsonb
 from arena.core.types import CompetitorSpec
 from arena.explain import families, verdicts
 from arena.judge.metrics import max_drawdown, sharpe, total_return
-from arena.runner import promotion
+from arena.runner import drift, promotion
 from arena.runner.digest import WINDOW
 from arena.store import books as bstore
+from arena.store import health as hstore
 from arena.store import registry
 from arena.web import fr
 
@@ -462,39 +463,43 @@ def benchmark_pnl(conn: psycopg.Connection, now: datetime) -> dict[str, Any] | N
 
 
 def sources_freshness(conn: psycopg.Connection, now: datetime) -> list[dict[str, Any]]:
-    """One row per data source: last data timestamp, last fetch, age level (ok / warn / bad)."""
-    specs = [
-        ("candles", "SELECT max(ts) AS data_ts, max(fetched_at) AS fetched FROM candles", None),
-        ("funding", "SELECT max(ts) AS data_ts, max(fetched_at) AS fetched FROM funding", None),
-        ("open_interest", "SELECT max(ts) AS data_ts, max(fetched_at) AS fetched FROM open_interest", None),
-        ("hl_snapshots", "SELECT max(ts) AS data_ts, max(fetched_at) AS fetched FROM hl_snapshots", None),
-        (
-            "articles",
-            "SELECT max(published_at) AS data_ts, max(fetched_at) AS fetched,"
-            " count(*) FILTER (WHERE fetched_at > %s) AS n24 FROM articles",
-            (now - timedelta(hours=24),),
-        ),
-        ("macro_events", "SELECT max(ts) AS data_ts, max(fetched_at) AS fetched FROM macro_events", None),
-    ]
+    """One row per data source, from ``feed_health``: what we asked, when, and what came back.
+
+    Read from the ingestion log rather than from ``max(fetched_at)`` of each
+    data table. A source that legitimately writes nothing -- the macro calendar
+    of a week already stored -- is healthy, and used to show up as three days
+    late.
+    """
+    rows = hstore.read_all(conn)
+    known = {r["source"]: r for r in rows}
     out: list[dict[str, Any]] = []
-    with conn.cursor() as cur:
-        for key, sql, params in specs:
-            cur.execute(sql, params)
-            r = cur.fetchone()
-            fetched = r["fetched"]
-            age = (now - fetched) if fetched else None
-            out.append(
-                {
-                    "key": key,
-                    "label": fr.SOURCE_FR[key],
-                    "data_ts": r["data_ts"],
-                    "fetched": fetched,
-                    "age": age,
-                    "level": fr.freshness_level(age),
-                    "count_24h": int(r["n24"]) if "n24" in r and r["n24"] is not None else None,
-                }
-            )
+    for key in hstore.SOURCES:
+        r = known.get(key)
+        last_ok = r["last_ok_at"] if r else None
+        age = (now - last_ok) if last_ok else None
+        limit = drift.feed_max_age(key)
+        out.append(
+            {
+                "key": key,
+                "label": fr.SOURCE_FR[key],
+                "data_ts": r["last_data_ts"] if r else None,
+                "fetched": r["last_fetch_at"] if r else None,
+                "last_ok": last_ok,
+                "age": age,
+                "limit_hours": limit,
+                "level": fr.freshness_level(age, limit),
+                "ok": bool(r["ok"]) if r else False,
+                "detail": (r["detail"] if r else "") or "",
+                "count_24h": _articles_24h(conn, now) if key == "articles" else None,
+            }
+        )
     return out
+
+
+def _articles_24h(conn: psycopg.Connection, now: datetime) -> int:
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) AS n FROM articles WHERE fetched_at > %s", (now - timedelta(hours=24),))
+        return int(cur.fetchone()["n"])
 
 
 def recent_alerts_fr(conn: psycopg.Connection, limit: int = ACTIVITY_ALERTS) -> list[dict[str, Any]]:
