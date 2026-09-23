@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from arena.competitors.features import ema, funding_zscores, realised_vol
+from arena.core.indicators import ema, funding_zscores, realised_vol
 from arena.core.snapshot import Snapshot
 
 RANK_PREFIX = "rank_"
