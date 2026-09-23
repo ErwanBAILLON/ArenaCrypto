@@ -7,7 +7,6 @@ import io
 import zipfile
 
 import pandas as pd
-import pytest
 
 from arena.data import binance_archive as archive
 
