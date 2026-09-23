@@ -163,6 +163,12 @@ def evaluate(
         "turnover": float(sum(res.turnover for _, res in fold_results)),
         "null_threshold": float(null_threshold),
         "n_trials": float(n_trials),
+        # kept so the arena-wide audit can re-deflate this Sharpe against a
+        # different trial count than the family's own (see arena.judge.audit)
+        "sr_period": float(sr_period),
+        "observations": float(T),
+        "skew": float(skew),
+        "kurtosis": float(kurt),
     }
     checks = {
         "folds_positive": metrics["folds_positive_frac"] >= cfg.min_folds_positive_frac,

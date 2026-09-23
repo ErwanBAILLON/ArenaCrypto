@@ -355,6 +355,33 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
 
 
 @app.command()
+def audit(q: float = typer.Option(0.10, help="Benjamini-Hochberg false discovery rate")) -> None:
+    """Arena-wide multiple testing: how many admissions survive the number of tests run.
+
+    The gate deflates a candidate by its own family's trial count. This asks
+    the question that sank the six freqtrade bots instead: across every family
+    and every weekly search, how much of what was admitted is just the best of
+    many tries?
+    """
+    from arena.judge import audit as audit_mod
+
+    _, conn, universe = _ctx()
+    report = audit_mod.run(conn, universe.name, q)
+    typer.echo(report.headline)
+    if report.bh_threshold is not None:
+        typer.echo(f"Benjamini-Hochberg threshold: p <= {report.bh_threshold:.4f}")
+    for row in report.rows:
+        if row.verdict != "admitted":
+            continue
+        mark = "survives" if row.survives_bh else "NOT SIGNIFICANT arena-wide"
+        dsr = f"{row.dsr_arena:.2f}" if row.dsr_arena is not None else "n/a"
+        typer.echo(
+            f"  {row.competitor or row.family} (trial {row.trial_id}): p={row.bootstrap_p:.3f} "
+            f"dsr_family={row.dsr_family:.2f} dsr_arena={dsr} -> {mark}"
+        )
+
+
+@app.command()
 def web(
     host: str = typer.Option("0.0.0.0", help="Bind address"), port: int = typer.Option(8080, help="TCP port")
 ) -> None:
