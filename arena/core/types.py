@@ -42,6 +42,7 @@ class CompetitorSpec:
     parent_id: int | None = None
     rationale: str = ""
     universe: str = "crypto"
+    gate_admitted: bool = False
 
 
 @dataclass

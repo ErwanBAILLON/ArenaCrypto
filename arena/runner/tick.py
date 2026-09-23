@@ -162,7 +162,7 @@ def run(
             conn.commit()
 
     _allocate(conn, specs, ts)
-    _drift_and_promote(conn, specs, ts, now)
+    _drift_and_promote(conn, specs, ts, now, universe)
     conn.commit()
     record_tick(conn, rep)
     return rep
@@ -244,7 +244,8 @@ def _allocate(conn, specs: list[CompetitorSpec], ts) -> None:
     bstore.write_allocations(conn, ts, weights)
 
 
-def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now) -> None:
+def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now, universe: Universe) -> None:
+    ppy = 365 * universe.bars_per_day
     nulls = [s for s in specs if s.role == "null" and s.family == "null_random"]
     null_rets = (
         bstore.read_returns(conn, [s.id for s in nulls], ts - timedelta(days=365), ts) if nulls else pd.DataFrame()
@@ -257,14 +258,14 @@ def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now) -> None:
         champion = groups["champion"][0] if groups["champion"] else None
         champ_cand = _candidate(conn, champion, ts) if champion else None
         if champ_cand is not None:
-            bleeding = drift.champion_bleeding(champion, champ_cand.returns)
+            bleeding = drift.champion_bleeding(champion, champ_cand.returns, universe.bars_per_day)
             if bleeding and not bstore.recent_alert_exists(conn, "drift", champion.id, None, ts - timedelta(days=1)):
                 bstore.add_alert(conn, bleeding)
         for ch in groups["challenger"]:
             cand = _candidate(conn, ch, ts)
             if cand is None:
                 continue
-            ok, evidence = promotion.should_promote(cand, champ_cand, null_rets, now)
+            ok, evidence = promotion.should_promote(cand, champ_cand, null_rets, now, ppy)
             if ok:
                 if champion is not None:
                     registry.set_status(conn, champion.id, "retired")

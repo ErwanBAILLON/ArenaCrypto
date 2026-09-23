@@ -35,6 +35,11 @@ FOUNDERS: list[tuple[str, str, dict]] = [
 ]
 FUNDING_FAMILIES = {"carry", "bench_carry_equal"}  # need perpetual funding: crypto only
 
+# The forward promotion test compares a challenger to the NULL_Q quantile of the null
+# models running beside it. A quantile of five numbers is a coin flip with extra steps;
+# promotion.MIN_NULL_SAMPLES refuses to promote below this many, so the arena carries them.
+N_NULL_COMPETITORS = 30
+
 
 def _uname(universe, name: str) -> str:
     """Competitor names are global: suffix them outside the historical crypto universe."""
@@ -52,7 +57,7 @@ def nulls_for(universe) -> list[CompetitorSpec]:
         None, _uname(universe, name), fam, 1, params, role=role, status="champion", universe=u
     )
     specs = [mk("null_cash", "null_cash", {}, "null")]
-    specs += [mk(f"null_random_{i}", "null_random", {"seed": i}, "null") for i in range(5)]
+    specs += [mk(f"null_random_{i}", "null_random", {"seed": i}, "null") for i in range(N_NULL_COMPETITORS)]
     if universe.exchange == "binance":
         specs.append(mk("bench_btc_hold", "bench_btc_hold", {}, "benchmark"))
         specs.append(mk("bench_carry_equal", "bench_carry_equal", {}, "benchmark"))
@@ -283,6 +288,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
                 params,
                 status=status,
                 universe=universe.name,
+                gate_admitted=adm.verdict.admitted,
                 rationale=(
                     "founder; gate "
                     f"{'admitted' if adm.verdict.admitted else 'rejected: ' + ', '.join(adm.verdict.failed)}; "
@@ -297,7 +303,10 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
                     kind="rejected",
                     competitor_id=cid,
                     payload={
-                        "detail": f"{name} rejected at gate ({', '.join(adm.verdict.failed)}); enters as challenger"
+                        "detail": (
+                            f"{name} rejected at gate ({', '.join(adm.verdict.failed)}); observed forward as a "
+                            "challenger but not promotable until it clears the gate"
+                        )
                     },
                 ),
             )
@@ -318,6 +327,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
                 {},
                 status="challenger",
                 universe=universe.name,
+                gate_admitted=True,  # cannot be backtested: its scores only exist forward (promotion.py)
                 rationale="founder; forward-only family, not backtest-gated",
             ),
         )

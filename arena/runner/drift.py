@@ -10,7 +10,7 @@ import pandas as pd
 from arena.core.types import Alert, CompetitorSpec
 from arena.judge.metrics import sharpe, total_return
 
-LIVE_WINDOW_BARS = 24 * 30
+LIVE_WINDOW_DAYS = 30
 SHARPE_FLOOR = -1.0
 RETURN_FLOOR = -0.10
 SILENT_DAYS = 7
@@ -25,12 +25,17 @@ def stale_data(last_bar: datetime | None, now: datetime, max_lag_bars: int = 2) 
     return None
 
 
-def champion_bleeding(spec: CompetitorSpec, returns: pd.Series) -> Alert | None:
-    """A champion whose live 30d Sharpe and return are both clearly negative."""
-    r = returns.dropna().tail(LIVE_WINDOW_BARS)
-    if len(r) < LIVE_WINDOW_BARS // 2:
+def champion_bleeding(spec: CompetitorSpec, returns: pd.Series, bars_per_day: int = 24) -> Alert | None:
+    """A champion whose live 30d Sharpe and return are both clearly negative.
+
+    ``bars_per_day`` makes the window a month in both arenas: 720 hourly bars
+    for crypto, 30 daily bars for classic markets.
+    """
+    window = LIVE_WINDOW_DAYS * bars_per_day
+    r = returns.dropna().tail(window)
+    if len(r) < window // 2:
         return None
-    s, tr = sharpe(r), total_return(r)
+    s, tr = sharpe(r, 365 * bars_per_day), total_return(r)
     if s < SHARPE_FLOOR and tr < RETURN_FLOOR:
         return Alert(
             kind="drift", competitor_id=spec.id, payload={"detail": f"{spec.name}: 30d Sharpe {s:.2f}, return {tr:.1%}"}
