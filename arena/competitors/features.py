@@ -7,6 +7,8 @@ which is what makes their parameters comparable in the challenger search.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import numpy as np
 import pandas as pd
 
@@ -91,3 +93,43 @@ def last_realised_vol(closes: pd.Series, window: int, bars_per_year: int = 8760)
         return float("nan")
     r = np.diff(np.log(x))
     return float(r.std(ddof=1) * np.sqrt(bars_per_year))
+
+
+MIN_FUNDING_DISPERSION = 1e-6
+"""Smallest 8h funding spread worth calling crowding (~0.1 %/year across the cross-section).
+
+Also the guard against dividing by numerical dust: on a perfectly flat
+cross-section the sample standard deviation is not exactly zero but ~1e-20, and
+the resulting z-scores are floating-point noise that looks like a signal.
+"""
+
+
+def funding_zscores(
+    snap, lookback_days: int, min_symbols: int = 4, min_dispersion: float = MIN_FUNDING_DISPERSION
+) -> dict[str, float]:
+    """Cross-sectional z-score of each symbol's mean 8h funding over ``lookback_days``.
+
+    The **level** of funding says what the market is doing: in a bull run every
+    perp pays, and ranking on the level then just ranks beta. The z-score
+    across the universe says who is paying *more than the others* to hold the
+    same kind of leveraged exposure, which is the crowding measure.
+
+    Empty when fewer than ``min_symbols`` carry funding, or when the spread
+    across them is below ``min_dispersion``: an undifferentiated cross-section
+    has nothing to say about who is crowded.
+    """
+    since = snap.ts - timedelta(days=lookback_days)
+    means: dict[str, float] = {}
+    for sym in snap.symbols:
+        f = snap.funding(sym)
+        f = f[f.index > since]
+        if not f.empty:
+            means[sym] = float(f.mean())
+    if len(means) < min_symbols:
+        return {}
+    values = np.array(list(means.values()), dtype=float)
+    sd = float(values.std(ddof=1))
+    if not np.isfinite(sd) or sd < min_dispersion:
+        return {}
+    mu = float(values.mean())
+    return {sym: (m - mu) / sd for sym, m in means.items()}

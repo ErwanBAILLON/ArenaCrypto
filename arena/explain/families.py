@@ -65,6 +65,39 @@ CARDS: dict[str, FamilyCard] = {
         "Une fois par jour à 00:00 UTC",
         ["Version à règles fixes ; une version apprise (classifieur) est prévue."],
     ),
+    "funding_skew": FamilyCard(
+        "funding_skew",
+        "Foule à levier (écart de funding)",
+        "Vend les perpétuels dont le funding est très au-dessus de celui des autres, achète ceux dont il est très en dessous, "
+        "à parts égales des deux côtés. Le funding est le prix du levier : celui qui paie beaucoup plus que les autres est le "
+        "côté encombré du marché, donc celui qu'une cascade de liquidations nettoie en premier.",
+        [
+            "Funding Binance (8 h) sur 7 jours, en écart-type par rapport au reste de l'univers",
+            "Cours 1 h pour valoriser",
+        ],
+        "Une fois par semaine, le lundi à 00:00 UTC",
+        [
+            "Ne couvre rien : contrairement au carry, la position est directionnelle.",
+            "Encombrement et tendance vont souvent ensemble : une partie du pari est un simple retour à la moyenne, "
+            "et le test d'entrée ne sait pas les distinguer.",
+        ],
+    ),
+    "crowded_trend": FamilyCard(
+        "crowded_trend",
+        "Tendance non encombrée",
+        "Même signal de tendance que la famille « Tendance », mais on jette toute position que la foule a déjà prise : pas "
+        "d'achat sur un actif dont les acheteurs à levier paient déjà une prime, pas de vente sur un actif dont les vendeurs "
+        "sont déjà payés. Une tendance encombrée se termine en liquidations, pas en essoufflement.",
+        [
+            "Cours 1 h : EMA 50 et 200, rendements 30 et 90 jours, volatilité 30 jours, ATR 14",
+            "Funding Binance (8 h) sur 7 jours, en écart-type par rapport au reste de l'univers",
+        ],
+        "Une fois par jour à 00:00 UTC, tient entre-temps",
+        [
+            "Si le funding ne filtre rien d'utile, cette famille est « Tendance » en plus cher en frais : c'est précisément "
+            "ce que la comparaison des trois familles doit trancher.",
+        ],
+    ),
     "meta_label": FamilyCard(
         "meta_label",
         "Méta-étiquetage (filtre appris)",

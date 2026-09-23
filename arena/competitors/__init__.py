@@ -2,6 +2,8 @@
 
 from arena.competitors import (  # noqa: E402,F401
     carry,
+    crowded_trend,
+    funding_skew,
     meta_label,
     news,
     nulls,

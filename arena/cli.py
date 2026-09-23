@@ -32,8 +32,10 @@ FOUNDERS: list[tuple[str, str, dict]] = [
     ("meta_label", "meta_label_v1", {}),
     ("price_action", "price_action_swing_v1", {"style": "swing"}),
     ("price_action", "price_action_position_v1", {"style": "position"}),
+    ("funding_skew", "funding_skew_v1", {}),
+    ("crowded_trend", "crowded_trend_v1", {}),
 ]
-FUNDING_FAMILIES = {"carry", "bench_carry_equal"}  # need perpetual funding: crypto only
+FUNDING_FAMILIES = {"carry", "bench_carry_equal", "funding_skew", "crowded_trend"}  # need perp funding: crypto only
 
 # The forward promotion test compares a challenger to the NULL_Q quantile of the null
 # models running beside it. A quantile of five numbers is a coin flip with extra steps;

@@ -3,6 +3,7 @@
 import pytest
 
 from arena.competitors.carry import Carry
+from arena.competitors.crowded_trend import CrowdedTrend
 from arena.competitors.regime import Regime
 from arena.competitors.trend_ts import TrendTS
 from arena.competitors.xs_momentum import XSMomentum
@@ -14,6 +15,7 @@ FACTORIES = [
     lambda: TrendTS(),
     lambda: XSMomentum({"k": 1}),
     lambda: Regime(),
+    lambda: CrowdedTrend(),
 ]
 
 

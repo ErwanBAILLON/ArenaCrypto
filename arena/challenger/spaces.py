@@ -64,10 +64,36 @@ def price_action(t: optuna.Trial) -> dict[str, Any]:
     }
 
 
+def funding_skew(t: optuna.Trial) -> dict[str, Any]:
+    return {
+        "lookback_days": t.suggest_int("lookback_days", 3, 21),
+        "k": t.suggest_int("k", 2, 5),
+        "min_z": t.suggest_float("min_z", 0.3, 1.5),
+        "max_weight": t.suggest_float("max_weight", 0.08, 0.25),
+        "market_neutral": t.suggest_categorical("market_neutral", [True, False]),
+    }
+
+
+def crowded_trend(t: optuna.Trial) -> dict[str, Any]:
+    return {
+        "fast": t.suggest_int("fast", 20, 80),
+        "slow": t.suggest_int("slow", 100, 300),
+        "lb_short_days": t.suggest_int("lb_short_days", 14, 45),
+        "lb_long_days": t.suggest_int("lb_long_days", 60, 120),
+        "target_vol": t.suggest_float("target_vol", 0.10, 0.30),
+        "atr_stop_mult": t.suggest_float("atr_stop_mult", 2.0, 5.0),
+        "funding_lookback_days": t.suggest_int("funding_lookback_days", 3, 21),
+        "max_long_z": t.suggest_float("max_long_z", -0.5, 1.5),
+        "min_short_z": t.suggest_float("min_short_z", -1.5, 0.5),
+    }
+
+
 SPACES: dict[str, Space] = {
     "carry": carry,
     "trend_ts": trend_ts,
     "xs_momentum": xs_momentum,
     "regime": regime,
     "price_action": price_action,
+    "funding_skew": funding_skew,
+    "crowded_trend": crowded_trend,
 }
