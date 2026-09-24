@@ -566,6 +566,28 @@ def audit(q: float = typer.Option(0.10, help="Benjamini-Hochberg false discovery
         )
 
 
+_UNIVERSE_OPTION = typer.Option(None, "--universe", help="Universe file(s) to watch; default: UNIVERSE_PATH")
+
+
+@app.command()
+def live(
+    interval: float = typer.Option(5.0, help="Seconds between two price passes"),
+    refresh: float = typer.Option(60.0, help="Seconds between two re-reads of the open legs"),
+    universe: list[str] = _UNIVERSE_OPTION,
+    tick_minutes: str = typer.Option("5,35", help="Minutes of the hour the ticks run at (quiet windows)"),
+) -> None:
+    """Watch perp prices and execute stops / ROI exits between ticks (see runner/live.py)."""
+    from arena.data.http import make_client
+    from arena.runner.live import run_forever
+
+    settings, conn, default_universe = _ctx()
+    universes = [load_universe(p) for p in universe] if universe else [default_universe]
+    minutes = tuple(int(m) for m in tick_minutes.split(",") if m.strip())
+    log.info("live watcher on %s every %.0fs", [u.name for u in universes], interval)
+    with make_client(timeout=15.0) as client:
+        run_forever(conn, settings, universes, client, interval=interval, refresh=refresh, tick_minutes=minutes)
+
+
 @app.command()
 def web(
     host: str = typer.Option("0.0.0.0", help="Bind address"), port: int = typer.Option(8080, help="TCP port")

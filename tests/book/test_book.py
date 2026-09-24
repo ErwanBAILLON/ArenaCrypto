@@ -152,3 +152,16 @@ def test_capacity_changes_the_verdict_on_the_same_book():
     # 40 % of a 5M book is 2M into a 3M-ADV perp: two thirds of a day's volume, so the
     # cap fires. A backtest that keeps filling there is writing fiction.
     assert large.fees / 0.4 == pytest.approx(0.0005 + _impact_fees().impact.cap)
+
+
+def test_a_live_fill_earns_to_its_price_and_pays_the_exit():
+    """A leg the watcher closed inside the bar is gone from positions but must still be accounted."""
+    book = Book(nav=10_000.0, fees=FEES, positions={})  # the watcher already re-stated the book without BTC
+    prev, now = {"BTC": 100.0, "ETH": 10.0}, {"BTC": 90.0, "ETH": 10.0}
+    row = book.step(None, now, prev, {}, {}, fills=[("BTC", "perp", 0.5, 95.0)])
+    assert row.ret == pytest.approx(0.5 * (95.0 / 100.0 - 1.0) - 0.5 * FEES.cost("perp", 0.5), abs=1e-12)
+    assert row.turnover == pytest.approx(0.5) and row.gross == 0.0
+    # a short leg stopped out above its entry loses accordingly
+    book = Book(nav=10_000.0, fees=FEES, positions={})
+    row = book.step(None, now, prev, {}, {}, fills=[("ETH", "perp", -0.2, 10.5)])
+    assert row.ret == pytest.approx(-0.2 * 0.05 - 0.2 * FEES.cost("perp", 0.2), abs=1e-12)

@@ -43,6 +43,9 @@ class Competitor(ABC):
     @abstractmethod
     def decide(self, snap: Snapshot) -> Decision: ...
 
+    def live_close(self, symbol: str, reason: str) -> None:  # noqa: B027 - optional hook
+        """Hook for the live watcher; stateless competitors have nothing to forget."""
+
     def state(self) -> dict[str, Any]:
         """Serialisable state to carry across processes (hysteresis only). Default: none."""
         return {}
@@ -91,11 +94,16 @@ class HoldingCompetitor(Competitor):
         super().__init__(params, seed, bar_hours)
         self._held: Decision = {}
         self._held_ts: str | None = None
+        self._live_cooldown: dict[str, int] = {}  # symbol -> bars left before it may be re-entered
 
     def compute(self, snap: Snapshot) -> Decision:  # pragma: no cover - abstract by convention
         raise NotImplementedError
 
     def decide(self, snap: Snapshot) -> Decision:
+        for sym in list(self._live_cooldown):
+            self._live_cooldown[sym] -= 1
+            if self._live_cooldown[sym] <= 0:
+                del self._live_cooldown[sym]
         if self._held_ts is not None and snap.ts.hour != self.rebalance_hour:
             return dict(self._held)
         if (
@@ -116,22 +124,38 @@ class HoldingCompetitor(Competitor):
                 merged[sym] = replace(old, conviction=new.conviction, reason=new.reason)
             else:
                 merged[sym] = new
+        for sym in self._live_cooldown:
+            merged.pop(sym, None)  # stopped out live: not straight back in at the next rebalance
         self._held, self._held_ts = merged, snap.ts.isoformat()
         return dict(merged)
 
+    def live_close(self, symbol: str, reason: str) -> None:
+        """A leg was closed between ticks: forget it, and keep it out for ``live_cooldown_bars``.
+
+        Without the cooldown a stop at 23:40 is bought straight back at the
+        00:00 rebalance if the rule still likes the symbol -- the same whipsaw
+        the ladder families avoid with theirs.
+        """
+        self._held.pop(symbol, None)
+        self._live_cooldown[symbol] = int(self.params.get("live_cooldown_bars", 24))
+
     def state(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "held_ts": self._held_ts,
             "held": {
                 s: {"weight": t.weight, "conviction": t.conviction, "kind": t.kind, "reason": t.reason}
                 for s, t in self._held.items()
             },
         }
+        if self._live_cooldown:
+            out["live_cooldown"] = dict(self._live_cooldown)
+        return out
 
     def restore_state(self, state: dict[str, Any]) -> None:
         from arena.core.types import Target
 
         self._held_ts = state.get("held_ts")
+        self._live_cooldown = {str(k): int(v) for k, v in (state.get("live_cooldown") or {}).items()}
         self._held = {
             s: Target(
                 weight=float(v["weight"]),

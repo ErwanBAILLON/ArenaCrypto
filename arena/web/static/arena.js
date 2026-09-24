@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const POLL_MS = 30000;
+  const POLL_MS = 10000;
   const LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
   const DARK = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
   const isDark = () => document.documentElement.dataset.theme === "dark" ||
@@ -87,7 +87,8 @@
         const t = document.createElement("span"); t.className = "time"; t.textContent = fmtTs(e.t);
         const who = document.createElement("a"); who.href = `/competitors/${e.competitor_id}`; who.textContent = e.name;
         const what = document.createElement("span");
-        what.textContent = ` ${e.kind} ${e.symbol} ` + (e.kind === "sortie" ? "" : `(${e.side === "long" ? "achat" : "vente"} ${(Math.abs(e.after) * 100).toFixed(1)} % du capital)`);
+        what.textContent = ` ${e.kind} ${e.symbol} ` + (e.kind === "sortie" ? (e.reason.live_exit ? `· ${e.reason.live_exit === "stop" ? "stop" : "objectif atteint"} en direct à ${e.reason.price}` : "") : `(${e.side === "long" ? "achat" : "vente"} ${(Math.abs(e.after) * 100).toFixed(1)} % du capital)`);
+        if (e.reason.live_exit) li.classList.add("live-exit");
         li.append(g, t, who, what);
         box.appendChild(li);
       }

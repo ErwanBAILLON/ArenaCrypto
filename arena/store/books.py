@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 
 import pandas as pd
@@ -188,3 +189,125 @@ def recent_alert_exists(
             (kind, competitor_id, symbol, since),
         )
         return cur.fetchone() is not None
+
+
+# ---------------------------------------------------------------------- live exits (fills between ticks)
+
+
+@dataclass(frozen=True)
+class Fill:
+    """A position leg closed between two ticks at a streamed price."""
+
+    ts: datetime
+    symbol: str
+    kind: str
+    weight_before: float
+    weight_after: float
+    price: float
+    reason: str
+    excess: float | None = None
+
+
+def write_fill(conn: psycopg.Connection, competitor_id: int, fill: Fill) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO fills (competitor_id, ts, symbol, kind, weight_before, weight_after, price, reason, excess)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (
+                competitor_id,
+                fill.ts,
+                fill.symbol,
+                fill.kind,
+                fill.weight_before,
+                fill.weight_after,
+                fill.price,
+                fill.reason,
+                fill.excess,
+            ),
+        )
+        return int(cur.fetchone()["id"])
+
+
+def unbooked_fills(conn: psycopg.Connection, competitor_id: int, upto: datetime) -> list[tuple[int, Fill]]:
+    """Fills at or before ``upto`` that no book row has accounted yet, oldest first."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, ts, symbol, kind, weight_before, weight_after, price, reason, excess FROM fills"
+            " WHERE competitor_id = %s AND booked_ts IS NULL AND ts <= %s ORDER BY ts",
+            (competitor_id, upto),
+        )
+        return [
+            (
+                int(r["id"]),
+                Fill(
+                    r["ts"],
+                    r["symbol"],
+                    r["kind"],
+                    float(r["weight_before"]),
+                    float(r["weight_after"]),
+                    float(r["price"]),
+                    r["reason"],
+                    r["excess"],
+                ),
+            )
+            for r in cur.fetchall()
+        ]
+
+
+def mark_fills_booked(conn: psycopg.Connection, ids: list[int], ts: datetime) -> None:
+    if not ids:
+        return
+    with conn.cursor() as cur:
+        cur.execute("UPDATE fills SET booked_ts = %s WHERE id = ANY(%s)", (ts, ids))
+
+
+def write_targets_snapshot(
+    conn: psycopg.Connection,
+    competitor_id: int,
+    ts: datetime,
+    positions: dict[str, tuple[str, float]],
+    closed: str,
+    reason: dict,
+) -> None:
+    """Re-state the whole book at ``ts`` with ``closed`` at zero weight.
+
+    ``last_targets`` reads the book as "every row at the latest timestamp", so a
+    live exit cannot be written as one lonely row: the surviving positions are
+    copied forward unchanged, and the closed one gets its explicit zero, as the
+    tick does for its own exits.
+    """
+    rows = [
+        (competitor_id, ts, sym, w, 0.0, kind, Jsonb({"carried": True}))
+        for sym, (kind, w) in positions.items()
+        if sym != closed and w != 0.0
+    ]
+    kind = positions.get(closed, ("perp", 0.0))[0]
+    rows.append((competitor_id, ts, closed, 0.0, 0.0, kind, Jsonb({"exit": True, **reason})))
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO targets (competitor_id, ts, symbol, weight, conviction, kind, reason)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            " ON CONFLICT (competitor_id, ts, symbol) DO UPDATE SET"
+            " weight = EXCLUDED.weight, conviction = EXCLUDED.conviction,"
+            " kind = EXCLUDED.kind, reason = EXCLUDED.reason",
+            rows,
+        )
+
+
+def entry_of_position(conn: psycopg.Connection, competitor_id: int, symbol: str, weight: float, upto: datetime):
+    """Earliest timestamp of the contiguous run where ``symbol`` was held with this sign, up to ``upto``."""
+    sign = 1 if weight > 0 else -1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT d.ts, (t.symbol IS NOT NULL) AS held"
+            " FROM (SELECT DISTINCT ts FROM targets WHERE competitor_id = %s AND ts <= %s) d"
+            " LEFT JOIN targets t ON t.competitor_id = %s AND t.ts = d.ts AND t.symbol = %s AND sign(t.weight) = %s"
+            " ORDER BY d.ts DESC",
+            (competitor_id, upto, competitor_id, symbol, sign),
+        )
+        since = upto
+        for r in cur.fetchall():
+            if not r["held"]:
+                break
+            since = r["ts"]
+        return since

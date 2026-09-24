@@ -281,6 +281,9 @@ class LadderHoldingCompetitor(HoldingCompetitor):
                 del self._basis[key]  # nothing references this basket any more
         return out
 
+    def live_close(self, symbol: str, reason: str) -> None:
+        self._close(symbol, reason)
+
     def _close(self, symbol: str, reason: str) -> None:
         """Close on the ladder and forget the position until the next re-selection.
 

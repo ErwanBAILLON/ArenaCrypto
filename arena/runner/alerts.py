@@ -13,7 +13,7 @@ from arena.store import books as bstore
 from arena.store import registry
 from arena.telegram import sender, templates
 
-ALWAYS_SEND = {"promotion", "stale", "error"}  # never folded into the digest
+ALWAYS_SEND = {"promotion", "stale", "error", "live_exit"}  # never folded into the digest
 _RE_WAS = re.compile(r"\(was (.+?)\)")
 
 

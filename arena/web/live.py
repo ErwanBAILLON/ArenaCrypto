@@ -227,6 +227,11 @@ def live_state(conn: psycopg.Connection, now: datetime) -> dict:
         tick = cur.fetchone()
         cur.execute("SELECT max(ts) AS ts FROM books")
         last_bar = cur.fetchone()["ts"]
+        cur.execute(
+            "SELECT greatest(coalesce(max(ts), 'epoch'),"
+            " (SELECT coalesce(max(ts), 'epoch') FROM books)) AS ts FROM targets"
+        )
+        last_write = cur.fetchone()["ts"]
     active = [s for s in registry.list_competitors(conn, statuses=["champion", "challenger"]) if s.role == "competitor"]
     positions = []
     for s in active:
@@ -267,7 +272,7 @@ def live_state(conn: psycopg.Connection, now: datetime) -> dict:
         "seconds_to_next": int((nxt - now).total_seconds()),
         "positions": positions,
         "recent_events": recent[:30],
-        "version": int(last_bar.timestamp()) if last_bar else 0,  # changes only when a tick wrote
+        "version": int(last_write.timestamp()) if last_write else 0,  # changes when a tick or a live exit wrote
     }
 
 

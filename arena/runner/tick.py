@@ -255,7 +255,11 @@ def _run_one(
         if history.funding is not None and not history.funding.empty:
             f = history.funding[(history.funding["ts"] > prev_ts) & (history.funding["ts"] <= ts)]
             funding = f.groupby("symbol")["rate"].sum().to_dict()
-    row = book.step(ts, prices, prev_prices, funding, decision, liquidity)
+    # legs the live watcher closed inside this bar: earn them to their fill price and pay the exit
+    pending = bstore.unbooked_fills(conn, spec.id, ts) if last_row is not None else []
+    fills = [(f.symbol, f.kind, f.weight_before, f.price) for _, f in pending]
+    row = book.step(ts, prices, prev_prices, funding, decision, liquidity, fills=fills)
+    bstore.mark_fills_booked(conn, [fid for fid, _ in pending], ts)
     exits = [s for s, (_, w) in prev_positions.items() if w != 0.0 and (s not in decision or decision[s].weight == 0.0)]
     bstore.write_targets(conn, spec.id, ts, decision, exits=exits)
     bstore.write_book_row(conn, spec.id, row)

@@ -29,6 +29,7 @@ _EVENT_EMOJI = {
     "stale": "⏳",
     "error": "❗",
     "drift": "📉",
+    "live_exit": "⚡",
     "info": "ℹ️",
 }
 _EVENT_LABEL = {
@@ -37,6 +38,7 @@ _EVENT_LABEL = {
     "stale": "Données en retard",
     "error": "Erreur",
     "drift": "Dérive",
+    "live_exit": "Sortie en direct",
 }
 _CRITERIA_FR = {
     "folds_positive": "gagner dans deux périodes de test sur trois",

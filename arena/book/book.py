@@ -15,6 +15,7 @@ Targets whose gross exposure exceeds 1 are scaled down proportionally.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -83,10 +84,27 @@ class Book:
         funding: dict[str, float],
         targets: Decision,
         liquidity: dict[str, SymbolLiquidity] | None = None,
+        fills: Iterable[tuple[str, str, float, float]] = (),
     ) -> BookRow:
+        """Advance the book one bar.
+
+        ``fills`` are legs closed *inside* the bar by the live watcher, as
+        ``(symbol, kind, weight_before, fill_price)``. Their positions are
+        already gone from ``self.positions`` (the watcher re-stated the book),
+        so this step earns them ``w × (fill / prev_close − 1)`` and charges the
+        closing turnover, as if the tick had sold them itself at that price.
+        """
         # 1. mark to market with positions held over (prev_ts, ts]
         price_ret = 0.0
         funding_pnl = 0.0
+        turnover = 0.0
+        fees = 0.0
+        for sym, kind, w, fill_price in fills:
+            pp = prev_prices.get(sym)
+            if pp and kind == "perp":
+                price_ret += w * (fill_price / pp - 1.0)
+            turnover += abs(w)
+            fees += abs(w) * self.fees.cost(kind, abs(w), (liquidity or {}).get(sym))
         for sym, (kind, w) in self.positions.items():
             rate = float(funding.get(sym, 0.0) or 0.0)
             if kind == "perp":
@@ -99,8 +117,6 @@ class Book:
 
         # 2. rebalance to new targets, pay fees on turnover
         new = self.cap_gross(targets)
-        turnover = 0.0
-        fees = 0.0
         symbols = set(self.positions) | set(new)
         for sym in symbols:
             k_old, w_old = self.positions.get(sym, ("perp", 0.0))

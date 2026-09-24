@@ -1,0 +1,59 @@
+{{- if .Values.live.enabled }}
+# The live watcher: one long-running process that polls perp prices every few
+# seconds and executes stops / ROI exits between ticks (arena/runner/live.py).
+# It writes fills and re-states books, so exactly one replica, never more.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arena-live
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "arena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: live
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "arena.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: live
+  template:
+    metadata:
+      labels:
+        {{- include "arena.labels" . | nindent 8 }}
+        app.kubernetes.io/component: live
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "arena.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: arena
+          image: {{ include "arena.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - live
+            - --interval
+            - {{ .Values.live.interval | quote }}
+            - --tick-minutes
+            - {{ .Values.live.tickMinutes | quote }}
+            {{- range .Values.live.universes }}
+            - --universe
+            - {{ . | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.targetName }}
+          env:
+            {{- include "arena.env" (dict "root" $) | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.light | nindent 12 }}
+          securityContext:
+            {{- include "arena.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

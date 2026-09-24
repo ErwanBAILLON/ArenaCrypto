@@ -37,6 +37,16 @@ resources:
     requests: { cpu: 400m, memory: 640Mi }   # keep tick+news+challenger+retrain under the 2Gi namespace quota
     limits: { cpu: "2", memory: 2Gi }
 
+# Live watcher: stops and ROI exits executed between ticks on streamed perp prices
+# (arena/runner/live.py). One replica; quiet windows around the tick minutes.
+live:
+  enabled: true
+  interval: 5
+  tickMinutes: "5,35"
+  universes:
+    - /app/config/universe.yaml
+    - /app/config/universe-wide.yaml
+
 # Second arena: classic markets (ETFs, FX) on daily Yahoo Finance bars.
 classic:
   enabled: true
