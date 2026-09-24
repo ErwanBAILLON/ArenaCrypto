@@ -133,7 +133,7 @@
       scales: { x: { time: true } },
       axes: [
         { stroke: fg, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, font: "12px system-ui", values: (u, vals) => vals.map((v) => new Date(v * 1000).toLocaleDateString("fr-FR", { timeZone: "UTC", day: "2-digit", month: "short" })) },
-        { stroke: fg, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, font: "12px system-ui", size: 62, values: (u, vals) => vals.map((v) => (ySuffix === "€" ? fmtEur.format(v) + " €" : v.toFixed(1))) },
+        { stroke: fg, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, font: "12px system-ui", size: 76, values: (u, vals) => vals.map((v) => (ySuffix === "€" ? fmtEur.format(v) + " €" : v.toFixed(1))) },
       ],
       series: [{ label: "date" }, ...seriesNames.map((n, i) => ({ label: n, stroke: colors[i], width: 2, points: { show: false } }))],
     };

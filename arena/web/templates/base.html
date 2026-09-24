@@ -34,7 +34,8 @@ h2 { font-size:18px; margin:30px 0 10px; letter-spacing:-.01em; } h2:first-child
 .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; margin-bottom:14px; box-shadow:var(--shadow); }
 .grid { display:grid; gap:14px; grid-template-columns:1fr; }
 @media (min-width:760px) { .grid.two { grid-template-columns:1fr 1fr; } .grid.wide { grid-template-columns:2fr 1fr; } }
-.tablewrap { overflow-x:auto; }
+.tablewrap { overflow-x:auto; max-width:100%; }
+.grid > *, .card { min-width:0; }
 table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
 th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
 th { color:var(--muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
