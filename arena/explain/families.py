@@ -141,6 +141,20 @@ CARDS: dict[str, FamilyCard] = {
         ["Rien : c'est le hasard"],
         "Nouveau tirage chaque semaine",
     ),
+    "xs_adaptive": FamilyCard(
+        "xs_adaptive",
+        "Panier adaptatif (signaux gagnés)",
+        "Garde une longue liste d'indicateurs candidats et, chaque semaine, ne fait voter que ceux dont la corrélation "
+        "avec les rendements relatifs des 52 semaines précédentes est significative, pondérés par cette corrélation. "
+        "Les signaux changent de signe avec le régime ; ce panier change de signaux avec eux, sans jamais regarder la "
+        "période qu'il trade.",
+        [
+            "Le panel complet : volatilité, effet loterie (gains extrêmes, asymétrie), tendance, funding, liquidité",
+            "Ses propres panels passés, pour mesurer ce qui a marché récemment",
+        ],
+        "Une fois par semaine le lundi, fermeture possible chaque jour sur l'objectif de gain",
+        ["S'il n'y a aucun signal significatif, il reste à plat plutôt que de deviner."],
+    ),
     "meta_label": FamilyCard(
         "meta_label",
         "Méta-étiquetage (filtre appris)",

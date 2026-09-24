@@ -71,6 +71,10 @@ def ingest_market(
             if not oi.empty:
                 oi["symbol"] = sym
                 counts["oi"] += cstore.upsert_open_interest(conn, EXCHANGE, oi)
+            pos = binance.positioning(client, bsym, limit=500 if last is None else 48)
+            if not pos.empty:
+                pos["symbol"] = sym
+                counts["positioning"] = counts.get("positioning", 0) + cstore.upsert_positioning(conn, EXCHANGE, pos)
             conn.commit()
         except Exception:  # one symbol must not stop the others
             conn.rollback()

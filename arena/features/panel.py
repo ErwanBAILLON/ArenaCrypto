@@ -47,6 +47,8 @@ class PanelConfig:
     bollinger_bars: int = 20
     donchian_days: int = 20
     beta_days: int = 30
+    lottery_days: int = 30
+    trend_quality_days: int = 30
     min_history_days: int = 8  # below this a symbol is dropped rather than imputed
 
 
@@ -259,8 +261,85 @@ def symbol_features(snap: Snapshot, symbol: str, market: pd.Series, cfg: PanelCo
     beta, idio = _beta_and_idio(close, market, cfg.beta_days * bars_per_day)
     out["beta_market"] = beta
     out["idio_vol"] = idio
+
+    # --- the lottery block: the theory behind the low-volatility result -----------
+    # Bali, Cakici and Whitelaw (2011): investors overpay for the chance of an
+    # extreme up-day, so the names with the largest recent daily gains
+    # underperform. Skew and kurtosis say the same thing about the whole shape.
+    daily = (
+        close.iloc[:: max(bars_per_day, 1)].pct_change().dropna() if bars_per_day > 1 else close.pct_change().dropna()
+    )
+    recent = daily.tail(cfg.lottery_days)
+    if len(recent) >= 10:
+        out["max_daily_ret"] = _safe(float(recent.max()))
+        out["min_daily_ret"] = _safe(float(recent.min()))
+        out["max5_daily_ret"] = _safe(float(recent.nlargest(5).mean()))
+        out["skew_30d"] = _safe(float(recent.skew()))
+        out["kurt_30d"] = _safe(float(recent.kurt()))
+        sd = float(recent.std(ddof=1))
+        out["extreme_share_30d"] = _safe(float((recent.abs() > 2.0 * sd).mean())) if sd > EPS else 0.0
+        out["up_day_share_30d"] = _safe(float((recent > 0).mean()))
+
+    # --- trend quality: a clean trend and a noisy climb are not the same thing ----
+    window = close.tail(cfg.trend_quality_days * bars_per_day)
+    if len(window) > 10:
+        net = abs(float(window.iloc[-1]) - float(window.iloc[0]))
+        path = float(window.diff().abs().sum())
+        out["efficiency_ratio"] = _safe(net / path) if path > EPS else 0.0  # Kaufman: 1 = straight line
+        out["hurst_proxy"] = _hurst(window)
+        out["adx"] = _adx(candles, cfg.atr_bars)
+
+    # --- seasonality and life-cycle -------------------------------------------------
+    out["day_of_week"] = float(snap.ts.weekday())
+    out["hour_utc"] = float(snap.ts.hour)
+    out["days_to_month_end"] = float((snap.ts + pd.offsets.MonthEnd(0) - snap.ts).days)
     out["days_of_history"] = float(len(close) / bars_per_day)
     return out
+
+
+def _hurst(close: pd.Series) -> float:
+    """Rescaled-range Hurst exponent proxy: > 0.5 trending, < 0.5 mean-reverting."""
+    r = np.log(close).diff().dropna().to_numpy()
+    if r.size < 32:
+        return float("nan")
+    lags = [8, 16, 32, min(64, r.size // 2)]
+    taus = []
+    for lag in lags:
+        chunks = [r[i : i + lag] for i in range(0, r.size - lag + 1, lag)]
+        rs = []
+        for c in chunks:
+            dev = np.cumsum(c - c.mean())
+            sd = c.std(ddof=1)
+            if sd > EPS:
+                rs.append((dev.max() - dev.min()) / sd)
+        if rs:
+            taus.append((lag, float(np.mean(rs))))
+    if len(taus) < 3:
+        return float("nan")
+    x, y = np.log([t[0] for t in taus]), np.log([t[1] for t in taus])
+    slope = float(np.polyfit(x, y, 1)[0])
+    return _safe(slope)
+
+
+def _adx(candles: pd.DataFrame, bars: int) -> float:
+    """Average directional index: strength of the trend regardless of its sign."""
+    w = candles.tail(bars * 3 + 1)
+    if len(w) < bars * 2:
+        return float("nan")
+    up = w["high"].diff()
+    down = -w["low"].diff()
+    plus_dm = np.where((up > down) & (up > 0), up, 0.0)
+    minus_dm = np.where((down > up) & (down > 0), down, 0.0)
+    prev_close = w["close"].shift(1)
+    tr = pd.concat([w["high"] - w["low"], (w["high"] - prev_close).abs(), (w["low"] - prev_close).abs()], axis=1).max(
+        axis=1
+    )
+    atr = tr.rolling(bars).mean()
+    plus_di = 100 * pd.Series(plus_dm, index=w.index).rolling(bars).mean() / atr
+    minus_di = 100 * pd.Series(minus_dm, index=w.index).rolling(bars).mean() / atr
+    dx = ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)) * 100
+    adx = dx.rolling(bars).mean().dropna()
+    return _safe(float(adx.iloc[-1])) if len(adx) else float("nan")
 
 
 # --------------------------------------------------------------------------- the panel
@@ -293,7 +372,27 @@ def build(snap: Snapshot, symbols: list[str] | None = None, cfg: PanelConfig = D
     zscores = funding_zscores(snap, 7)
     panel["funding_crowding_z"] = pd.Series(zscores).reindex(panel.index)
 
-    ranked = panel.rank(pct=True, numeric_only=True)
+    # cross-asset: does the name move with BTC, with ETH, or on its own?
+    anchors = {a: s for a in ("BTC", "BTCUSDT") for s in names if s == a} | {
+        a: s for a in ("ETH", "ETHUSDT") for s in names if s == a
+    }
+    for label, key in (("btc", "BTC"), ("eth", "ETH")):
+        anchor = anchors.get(key) or anchors.get(key + "USDT")
+        if anchor is None:
+            continue
+        ref = snap.candles(anchor)["close"]
+        betas = {}
+        for sym in panel.index:
+            b, _ = _beta_and_idio(snap.candles(sym)["close"], ref, cfg.beta_days * snap.bars_per_day)
+            betas[sym] = b
+        panel[f"beta_{label}"] = pd.Series(betas).reindex(panel.index)
+    btc, eth = anchors.get("BTC") or anchors.get("BTCUSDT"), anchors.get("ETH") or anchors.get("ETHUSDT")
+    if btc and eth:
+        ratio = snap.candles(eth)["close"] / snap.candles(btc)["close"].reindex(snap.candles(eth).index)
+        panel["xs_ethbtc_ret_30d"] = _pct_return(ratio.dropna(), 30 * snap.bars_per_day)
+
+    no_rank = {"day_of_week", "hour_utc", "days_to_month_end", "days_of_history"}
+    ranked = panel[[c for c in panel.columns if c not in no_rank]].rank(pct=True, numeric_only=True)
     ranked.columns = [f"{RANK_PREFIX}{c}" for c in ranked.columns]
     panel = pd.concat([panel, ranked], axis=1)
 

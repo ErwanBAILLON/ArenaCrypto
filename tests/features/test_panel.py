@@ -117,3 +117,44 @@ class TestContent:
         snap = _snap(history)
         row = symbol_features(snap, "BTC", market_series(snap, SYMS))
         assert row and "ret_30d" in row and np.isfinite(row["ret_30d"])
+
+
+class TestLotteryTrendCrossAsset:
+    def test_the_lottery_block_is_present_and_ordered(self, history):
+        panel = build(_snap(history))
+        for col in ("max_daily_ret", "max5_daily_ret", "skew_30d", "kurt_30d", "extreme_share_30d", "up_day_share_30d"):
+            assert col in panel and f"{RANK_PREFIX}{col}" in panel, col
+        assert (panel["max_daily_ret"] >= panel["max5_daily_ret"]).all()
+        assert panel["extreme_share_30d"].between(0, 1).all()
+
+    def test_a_straight_line_has_an_efficiency_ratio_of_one(self, history):
+        candles, funding = history
+        ts = candles["ts"].max()
+        straight = candles.copy()
+        line = np.linspace(100, 200, len(straight[straight["symbol"] == "SOL"]))
+        straight.loc[straight["symbol"] == "SOL", ["open", "high", "low", "close"]] = np.repeat(line[:, None], 4, 1)
+        panel = build(Snapshot.from_long(ts, SYMS, straight, funding))
+        assert panel.loc["SOL", "efficiency_ratio"] == pytest.approx(1.0, abs=1e-9)
+        assert panel.loc["BTC", "efficiency_ratio"] < 0.5  # a random walk wanders
+
+    def test_trend_quality_columns_are_finite(self, history):
+        panel = build(_snap(history))
+        assert np.isfinite(panel["hurst_proxy"]).all() and panel["adx"].between(0, 100).all()
+
+    def test_seasonality_is_not_ranked_across_the_cross_section(self, history):
+        panel = build(_snap(history))
+        assert "day_of_week" in panel and f"{RANK_PREFIX}day_of_week" not in panel
+        assert panel["day_of_week"].nunique() == 1  # same bar for everyone
+
+    def test_cross_asset_betas_and_the_eth_btc_ratio(self, history):
+        panel = build(_snap(history))
+        assert "beta_btc" in panel and "beta_eth" in panel and "xs_ethbtc_ret_30d" in panel
+        assert panel.loc["BTC", "beta_btc"] == pytest.approx(1.0, abs=1e-6)
+        assert panel["xs_ethbtc_ret_30d"].nunique() == 1
+
+    def test_the_wider_panel_still_cannot_see_the_future(self, history):
+        candles, funding = history
+        ts = candles["ts"].iloc[24 * 180]
+        truncated = build(_snap(history, ts))
+        full_view = build(Snapshot.from_long(candles["ts"].max(), SYMS, candles, funding).at(ts))
+        pd.testing.assert_frame_equal(truncated, full_view)

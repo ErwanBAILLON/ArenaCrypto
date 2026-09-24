@@ -98,6 +98,7 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             scores,
             int(p["k"]),
             float(p["max_weight"]),
+            long_only=bool(p.get("long_only", False)),
             hedge=str(p.get("hedge", "picks")),
             hedge_symbols=list(p.get("hedge_symbols") or ["BTCUSDT", "ETHUSDT", "BTC", "ETH"]),
         )

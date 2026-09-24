@@ -116,3 +116,36 @@ def open_interest_hist(client: httpx.Client, symbol: str, period: str = "1h", li
         }
     )
     return out.sort_values("ts").reset_index(drop=True)
+
+
+POSITIONING_ENDPOINTS = {
+    "global_ls_ratio": ("/futures/data/globalLongShortAccountRatio", "longShortRatio"),
+    "top_ls_ratio": ("/futures/data/topLongShortPositionRatio", "longShortRatio"),
+    "taker_bs_ratio": ("/futures/data/takerlongshortRatio", "buySellRatio"),
+}
+
+
+def positioning(client: httpx.Client, symbol: str, period: str = "1h", limit: int = 48) -> pd.DataFrame:
+    """Long/short account ratio, top-trader position ratio and taker buy/sell ratio.
+
+    DataFrame[ts, global_ls_ratio, top_ls_ratio, taker_bs_ratio]. Binance keeps
+    about 30 days of each; the store keeps everything it has ever fetched, which
+    is the whole point of fetching it every hour.
+    """
+    frames = []
+    for column, (path, field) in POSITIONING_ENDPOINTS.items():
+        page = get_json(client, f"{BASE}{path}", params={"symbol": symbol, "period": period, "limit": limit})
+        if not page:
+            continue
+        frames.append(
+            pd.DataFrame(
+                {"ts": _utc([int(r["timestamp"]) for r in page]), column: [float(r[field]) for r in page]}
+            ).set_index("ts")
+        )
+    if not frames:
+        return _empty(["ts", *POSITIONING_ENDPOINTS])
+    out = pd.concat(frames, axis=1).sort_index().reset_index()
+    for column in POSITIONING_ENDPOINTS:
+        if column not in out:
+            out[column] = float("nan")
+    return out[["ts", *POSITIONING_ENDPOINTS]]

@@ -147,3 +147,31 @@ def last_candle_ts(conn: psycopg.Connection, exchange: str, symbol: str, tf: str
         )
         row = cur.fetchone()
     return row["ts"] if row and row["ts"] is not None else None
+
+
+def upsert_positioning(conn, exchange: str, frame) -> int:
+    """Insert positioning rows, ignoring stamps already stored; returns rows written."""
+    import math
+
+    if frame is None or frame.empty:
+        return 0
+    rows = [
+        (
+            exchange,
+            str(r["symbol"]),
+            r["ts"].to_pydatetime() if hasattr(r["ts"], "to_pydatetime") else r["ts"],
+            None
+            if r.get("global_ls_ratio") is None or math.isnan(r["global_ls_ratio"])
+            else float(r["global_ls_ratio"]),
+            None if r.get("top_ls_ratio") is None or math.isnan(r["top_ls_ratio"]) else float(r["top_ls_ratio"]),
+            None if r.get("taker_bs_ratio") is None or math.isnan(r["taker_bs_ratio"]) else float(r["taker_bs_ratio"]),
+        )
+        for r in frame.to_dict(orient="records")
+    ]
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO positioning (exchange, symbol, ts, global_ls_ratio, top_ls_ratio, taker_bs_ratio)"
+            " VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (exchange, symbol, ts) DO NOTHING",
+            rows,
+        )
+        return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0

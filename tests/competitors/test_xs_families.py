@@ -314,3 +314,51 @@ class TestTwoSignalPreset:
         assert set(TWO_SIGNALS) == {"rank_vol_30d", "rank_donchian_position"}
         assert XsSparse()._signals() == DEFAULT_SIGNALS
         assert XsSparse({"signals": TWO_SIGNALS}).decide(_snap(history))
+
+
+# --------------------------------------------------------------------------- adaptive
+
+
+class TestXsAdaptive:
+    def test_it_stands_aside_until_signals_have_earned_a_vote(self, history):
+        from arena.competitors.xs_adaptive import XsAdaptive
+
+        comp = XsAdaptive({"min_symbols": 6})
+        assert comp.decide(_snap(history)) == {}  # no trailing history yet
+        assert comp.state()["history"]  # but it recorded the panel for later
+
+    def test_it_learns_only_from_the_past(self, history):
+        """Walk it weekly; trailing ICs appear only once a horizon has fully elapsed,
+        and on data with real drift some candidate eventually clears a low bar."""
+        from arena.competitors.xs_adaptive import XsAdaptive
+
+        candles, funding = history
+        stamps = sorted(candles["ts"].unique())
+        comp = XsAdaptive({"min_symbols": 6, "min_t": 0.5, "lookback_weeks": 20, "horizon_days": 7})
+        first_ics = None
+        traded = False
+        mondays = [t for t in stamps[24 * 100 :] if t.weekday() == 0 and t.hour == 0]  # the rebalance bar
+        for i, ts in enumerate(mondays):
+            snap = Snapshot.from_long(ts, SYMS, candles[candles["ts"] <= ts], funding[funding["ts"] <= ts])
+            ics = comp._trailing_ics(snap)
+            if i < 2:
+                assert ics == {}  # nothing resolved yet: no look-ahead possible
+            if ics and first_ics is None:
+                first_ics = ics
+            traded = traded or bool(comp.decide(snap))
+        assert first_ics, "no trailing IC ever resolved"
+        assert traded
+        assert len(comp.state()["history"]) >= 8
+
+    def test_state_round_trips(self, history):
+        from arena.competitors.xs_adaptive import XsAdaptive
+
+        comp = XsAdaptive({"min_symbols": 6})
+        comp.decide(_snap(history))
+        clone = XsAdaptive({"min_symbols": 6})
+        clone.restore_state(comp.state())
+        assert clone.state() == comp.state()
+
+    def test_long_only_carries_no_shorts(self, history):
+        d = XsSparse({"long_only": True}).decide(_snap(history))
+        assert d and all(t.weight > 0 for t in d.values())
