@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The panel grows to 117 columns: the lottery block (largest recent daily gains, skew, kurtosis, share of extreme days), trend quality (Kaufman efficiency ratio, Hurst proxy, ADX), betas to BTC and ETH with the ETH/BTC ratio's momentum, seasonality.
+- `xs_adaptive`: each week keeps only the candidates whose trailing-52-week rank IC is significant and weights them by it. Signals change sign with the regime; this changes signals with them, using nothing from the period it trades.
+- `positioning` (migration 0008): long/short account ratios, top-trader position ratios and taker buy/sell volume, stored every tick. Binance keeps thirty days; a history starts today.
+- `arena.models.mlp`: a one-hidden-layer network with `hidden=0` as its own linear control, GKX-style, numpy only.
+- `tranches=N` (staggered sub-books averaged), `vol_mode="riskparity"` and `long_only` on the shared cross-sectional sizing path.
+
 ## [0.6.0] - 2026-09-24
 
 The wide arena. Design: `docs/specs/2026-09-23-xs-panel-design.md`; results: `docs/specs/2026-09-24-xs-panel-results.md`.
