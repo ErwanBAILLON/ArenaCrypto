@@ -161,3 +161,49 @@ down here so it is on the record before the temptation.
 - One held-out year is one path. The combinatorial machinery gives a
   distribution in training but the final comparison is a single window, and
   2025-09 to 2026-09 had its own character.
+
+## Round two: the structural levers, walked forward
+
+The held-out year was spent, so the second round was scored the only honest way
+left for an *unfitted* rule: every quarter of the history is out of sample, so
+each variant is run on all ten quarters (2024-Q2 → 2026-Q3) and the
+distribution is reported, not one number. Same universe, same impact model at
+$1M.
+
+| variant | median Sharpe | mean | worst | quarters > 0 | ann. return | turnover / q |
+|---|---|---|---|---|---|---|
+| **baseline: 5 signals, picks-hedged, weekly** | **1.52** | 1.02 | −2.01 | 7/10 | +2.4 % | 3.3 |
+| biweekly | 1.29 | 0.57 | −3.76 | 6/10 | +1.3 % | 1.7 |
+| portfolio-vol sizing, gross ≤ 0.6 | 0.90 | 0.63 | −2.66 | 6/10 | **+5.3 %** | — |
+| index hedge | 0.66 | 0.44 | −3.06 | 7/10 | +1.0 % | 3.7 |
+| monthly | 0.50 | 0.16 | −3.64 | 5/10 | +0.6 % | 0.9 |
+| index + monthly | 0.23 | 0.06 | −3.53 | 6/10 | +0.3 % | — |
+| BTC/ETH anchor hedge | −1.08 | −0.33 | −4.12 | 4/10 | −1.6 % | 4.3 |
+| **two signals (pre-registered)** | **−0.92** | −0.36 | −3.36 | 4/10 | −0.2 % | — |
+
+Nearly every structural hypothesis from the analysis of the single held-out
+year is refuted across ten quarters:
+
+- **Hedging with the index or with BTC/ETH is worse than hedging with picks.**
+  The short leg's alpha was small, but the picks it shorted were the
+  right-tailed junk whose absence from the hedge adds basis risk. Shorting BTC
+  against a low-volatility long book is a bet that BTC falls with the alts; in
+  quarters where it did not, it lost.
+- **Slowing down does not help.** Monthly halves turnover and halves the
+  Sharpe; the signal decays faster than a month. Capacity is still the binding
+  constraint, but it cannot be bought with cadence.
+- **The two-signal rule fails.** This is the important one. The per-signal ICs
+  on the bear year said low volatility carried everything and three signals
+  were negative. Across ten quarters the five-signal composite is the best rule
+  and the two-signal one loses money. The "bad" signals were bad *in that
+  year*. Pre-registering the hypothesis instead of shipping it is the only
+  reason this is a finding and not a deployed mistake.
+- **Portfolio-level sizing is the one lever that does what it claims**, and it
+  trades Sharpe for money: 0.90 against 1.52, +5.3 % against +2.4 %. That is
+  the correct trade for the stated objective — most money at tolerable
+  drawdown — and the correct thing to say about it is that it buys return with
+  gross, and gross is what the impact model charges for.
+
+Even the winner is a factor, not a machine: three quarters in ten are negative
+and the worst is a Sharpe of −2. A rule that loses a quarter in three is what a
+real cross-sectional premium looks like.
