@@ -50,6 +50,8 @@ class LadderHoldingCompetitor(HoldingCompetitor):
         self._cooldown: dict[str, int] = {}
         self._basis: dict[str, dict[str, float]] = {}
         self._last_rebalance: str | None = None
+        self._tranches: dict[str, dict] = {}
+        self._tranche_day: dict[str, str] = {}
 
     # ------------------------------------------------------------------ ladder
 
@@ -76,11 +78,46 @@ class LadderHoldingCompetitor(HoldingCompetitor):
         return snap.ts - pd.Timestamp(self._last_rebalance) >= pd.Timedelta(weeks=every)
 
     def compute(self, snap: Snapshot) -> Decision:
-        """Cadence gate around :meth:`select`, which subclasses implement."""
-        if not self.rebalance_due(snap):
-            return dict(self._held)
-        self._last_rebalance = snap.ts.isoformat()
-        return self.select(snap)
+        """Cadence gate around :meth:`select`, which subclasses implement.
+
+        With ``tranches > 1`` the book is the average of that many sub-books,
+        each re-selected on its own weekday. A single Monday rebalance bets the
+        whole book on Monday's ranking; five staggered tranches turn over a
+        fifth each day and average out the luck of the timing.
+        """
+        tranches = int(self.params.get("tranches", 1) or 1)
+        if tranches <= 1:
+            if not self.rebalance_due(snap):
+                return dict(self._held)
+            self._last_rebalance = snap.ts.isoformat()
+            return self.select(snap)
+        slot = snap.ts.weekday() % tranches
+        if self._tranche_day.get(str(slot)) != snap.ts.date().isoformat():
+            self._tranches[str(slot)] = {
+                s: {"weight": t.weight, "conviction": t.conviction, "kind": t.kind, "reason": t.reason}
+                for s, t in self.select(snap).items()
+            }
+            self._tranche_day[str(slot)] = snap.ts.date().isoformat()
+            self._last_rebalance = snap.ts.isoformat()
+        merged: dict[str, dict] = {}
+        for book in self._tranches.values():
+            for sym, t in book.items():
+                acc = merged.setdefault(
+                    sym, {"weight": 0.0, "conviction": 0.0, "kind": t["kind"], "reason": t["reason"], "n": 0}
+                )
+                acc["weight"] += t["weight"] / tranches
+                acc["conviction"] += t["conviction"] / tranches
+                acc["n"] += 1
+        return {
+            sym: Target(
+                weight=a["weight"],
+                conviction=a["conviction"],
+                kind=a["kind"],
+                reason={**a["reason"], "tranches": a["n"]},
+            )
+            for sym, a in merged.items()
+            if abs(a["weight"]) > 1e-9
+        }
 
     def select(self, snap: Snapshot) -> Decision:  # pragma: no cover - abstract by convention
         raise NotImplementedError
@@ -104,6 +141,8 @@ class LadderHoldingCompetitor(HoldingCompetitor):
         )
         if not weights:
             return {}
+        if str(p.get("vol_mode", "names")) == "riskparity":
+            weights = self._risk_parity(panel, weights)
         scale = self._vol_scale(snap, panel, weights)
         gross = sum(abs(w) for w in weights.values()) * scale
         cap = float(p.get("max_gross", 1.0))
@@ -120,10 +159,36 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             )
         return out
 
+    @staticmethod
+    def _risk_parity(panel: pd.DataFrame, weights: dict[str, float]) -> dict[str, float]:
+        """Inverse-volatility weights within each side, keeping each side's gross.
+
+        Equal dollar weights give the most volatile pick the most risk. Equal
+        *risk* weights are what "eight names a side" ought to mean, and they are
+        the cheapest risk model there is: one number per name, no covariance.
+        """
+        vols = panel.get("vol_30d")
+        if vols is None:
+            return weights
+        out: dict[str, float] = {}
+        for sign in (1.0, -1.0):
+            side = {s: w for s, w in weights.items() if np.sign(w) == sign}
+            if not side:
+                continue
+            gross = sum(abs(w) for w in side.values())
+            inv = {s: 1.0 / max(float(vols.get(s, np.nan)), VOL_FLOOR) for s in side}
+            inv = {s: (v if np.isfinite(v) else 1.0 / VOL_FLOOR) for s, v in inv.items()}
+            total = sum(inv.values())
+            for s, v in inv.items():
+                out[s] = sign * gross * v / total
+        return out
+
     def _vol_scale(self, snap: Snapshot, panel: pd.DataFrame, weights: dict[str, float]) -> float:
         p = self.params
         target = float(p["target_vol"])
         mode = str(p.get("vol_mode", "names"))
+        if mode == "riskparity":
+            mode = "names"  # the parity fixed the shape; the level is still scaled on the names
         if mode == "portfolio":
             closes = snap.closes()
             window = int(p.get("vol_window_days", 30)) * self.bars_per_day
@@ -166,6 +231,8 @@ class LadderHoldingCompetitor(HoldingCompetitor):
         return float(entry.get("side", 1.0)) * (symbol_leg - self._basket_return(snap, basis))
 
     def decide(self, snap: Snapshot) -> Decision:
+        if int(self.params.get("tranches", 1) or 1) > 1:
+            self.rebalance_weekday = None  # every day is some tranche's day
         base = super().decide(snap)
         ladder, stop = self._ladder(), self._stop()
 
@@ -234,6 +301,8 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             "cooldown": dict(self._cooldown),
             "basis": {k: dict(v) for k, v in self._basis.items()},
             "last_rebalance": self._last_rebalance,
+            "tranches": self._tranches,
+            "tranche_day": self._tranche_day,
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
@@ -247,6 +316,8 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             str(k): {str(kk): float(vv) for kk, vv in v.items()} for k, v in (state.get("basis") or {}).items()
         }
         self._last_rebalance = state.get("last_rebalance")
+        self._tranches = dict(state.get("tranches") or {})
+        self._tranche_day = dict(state.get("tranche_day") or {})
 
 
 def neutral_book(

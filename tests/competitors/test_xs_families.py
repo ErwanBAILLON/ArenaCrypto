@@ -362,3 +362,48 @@ class TestXsAdaptive:
     def test_long_only_carries_no_shorts(self, history):
         d = XsSparse({"long_only": True}).decide(_snap(history))
         assert d and all(t.weight > 0 for t in d.values())
+
+
+class TestTranchesAndRiskParity:
+    def test_five_tranches_reselect_on_five_weekdays(self, history):
+        candles, funding = history
+        stamps = sorted(candles["ts"].unique())
+        comp = XsSparse({"tranches": 5})
+        for ts in [t for t in stamps[24 * 100 : 24 * 121] if t.hour == 0]:  # three weeks of midnights
+            comp.decide(Snapshot.from_long(ts, SYMS, candles[candles["ts"] <= ts], funding[funding["ts"] <= ts]))
+        assert len(comp.state()["tranches"]) == 5
+
+    def test_a_tranched_book_averages_its_sub_books(self, history):
+        candles, funding = history
+        stamps = sorted(candles["ts"].unique())
+        comp = XsSparse({"tranches": 5, "k": 3})
+        last = {}
+        for ts in [t for t in stamps[24 * 100 : 24 * 121] if t.hour == 0]:
+            last = comp.decide(Snapshot.from_long(ts, SYMS, candles[candles["ts"] <= ts], funding[funding["ts"] <= ts]))
+        assert last and max(abs(t.weight) for t in last.values()) < XsSparse.default_params["max_weight"] + 1e-9
+        assert all("tranches" in t.reason for t in last.values())
+
+    def test_tranche_state_round_trips(self, history):
+        comp = XsSparse({"tranches": 3})
+        comp.decide(_snap(history))
+        clone = XsSparse({"tranches": 3})
+        clone.restore_state(comp.state())
+        assert clone.state()["tranches"] == comp.state()["tranches"]
+
+    def test_risk_parity_gives_the_volatile_pick_less_dollar_weight(self, history):
+        from arena.competitors.ladder import LadderHoldingCompetitor
+
+        panel = build_panel(_snap(history))
+        weights = {s: 0.1 for s in panel.index[:4]} | {s: -0.1 for s in panel.index[4:8]}
+        parity = LadderHoldingCompetitor._risk_parity(panel, weights)
+        longs = [s for s, w in parity.items() if w > 0]
+        assert sum(parity[s] for s in longs) == pytest.approx(0.4)
+        most, least = (
+            max(longs, key=lambda s: panel.loc[s, "vol_30d"]),
+            min(longs, key=lambda s: panel.loc[s, "vol_30d"]),
+        )
+        assert parity[most] < parity[least]
+
+    def test_risk_parity_mode_trades_and_stays_neutral(self, history):
+        d = XsSparse({"vol_mode": "riskparity"}).decide(_snap(history))
+        assert d and sum(t.weight for t in d.values()) == pytest.approx(0.0, abs=1e-9)
