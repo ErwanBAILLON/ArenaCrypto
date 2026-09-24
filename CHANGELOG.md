@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-24
+
+The wide arena. Design: `docs/specs/2026-09-23-xs-panel-design.md`; results: `docs/specs/2026-09-24-xs-panel-results.md`.
+
 ### Added
 - **A survivorship-free universe.** `arena.data.binance_archive` reads Binance's public archive, which keeps delisted symbols, and `arena universe-build` ranks every archived perpetual — dead ones included — by trailing dollar volume at each weekly date. Measured on the real data: 402 distinct symbols passed through a 50-name universe over 151 weeks, weekly churn is 9.7 %, and only 18 of the first week's members were still in it at the end. Membership is stored (migration 0007) and read back, never recomputed.
 - **Per-symbol execution cost.** `arena.core.costs.ImpactModel` implements the square-root impact law, priced at a stated `capacity_nav` rather than at the 10 000 € the book holds — at that size impact is negligible everywhere, which silently flatters illiquid names. `k` is swept, not fitted; missing liquidity data costs 100 bps, never zero.
