@@ -127,3 +127,14 @@ def test_arena_nulls_is_idempotent_and_tops_up(conn, monkeypatch, tmp_path):
     result = runner.invoke(app, ["nulls"])
     assert result.exit_code == 0 and "0 added" in result.stdout
     assert {s.name for s in registry.list_competitors(conn, universe="crypto")} == first
+
+
+def test_a_point_in_time_arena_seeds_the_cross_sectional_founders_only():
+    from arena.cli import WIDE_FOUNDERS, founders_for
+    from arena.core.universe import load_universe
+
+    wide = load_universe("config/universe-wide.yaml")
+    assert founders_for(wide) == WIDE_FOUNDERS
+    assert {f[0] for f in WIDE_FOUNDERS} == {"xs_sparse"}  # xs_complex is not seeded: 5/17 quarters positive
+    crypto = load_universe("config/universe.yaml")
+    assert "xs_sparse" not in {f[0] for f in founders_for(crypto)}

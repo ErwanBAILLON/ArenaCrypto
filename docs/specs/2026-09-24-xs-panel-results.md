@@ -207,3 +207,51 @@ year is refuted across ten quarters:
 Even the winner is a factor, not a machine: three quarters in ten are negative
 and the worst is a Sharpe of −2. A rule that loses a quarter in three is what a
 real cross-sectional premium looks like.
+
+## Round two: a fair trial for the complex model, and the honest null
+
+`xs_complex` was retried the way its critics would demand: history from
+2021-01 (299 weekly dates, 8 741 597 bars), retrained before **every** quarter
+on everything before it, embargoed by the ladder horizon, with width,
+bandwidth and shrinkage all selected inside the training set by purged CPCV.
+Seventeen out-of-sample quarters, 2022-Q3 → 2026-Q3, both arms on the
+baseline construction.
+
+| arm | median Sharpe | mean | quarters > 0 | ann. return |
+|---|---|---|---|---|
+| xs_complex (rolling retrain, grid-searched) | −0.72 | −1.05 | 5/17 | −1.9 % |
+| xs_sparse (unfitted) | 0.18 | 0.47 | 10/17 | +1.1 % |
+
+The complex model loses money in twelve quarters of seventeen. In every single
+fold its cross-validated spread was positive (+0.0075 to +0.0133) and its PBO
+at or near zero. Cross-validation, purged and embargoed, with a real grid PBO
+this time, approved a model that then lost money for four years running. That
+is not a bug in the validation; it is what overfitting looks like when the
+signal-to-noise ratio is this low. The selected bandwidth was γ = 0.005 in
+sixteen folds of seventeen — the *most linear* option offered. The search kept
+asking for a linear model and the random features gave it noise to fit instead.
+
+`xs_sparse` over seventeen quarters is weaker than over the last ten (median
+0.18 against 1.52): 2022–2023 were poor for it. Ten of seventeen positive is a
+factor with a real but thin premium, not a machine. Written down so the last
+ten quarters are not mistaken for the whole story.
+
+**Against a turnover-matched null.** `null_neutral` — k random longs against k
+random shorts, weekly, same per-name cap — over the same ten quarters as the
+variant table, five seeds: median Sharpes −3.01, +1.02, −0.33, −1.90, −1.76.
+The baseline's 1.52 beats every seed. Selection is doing something; the earlier
+"beat null_random" comparison mostly measured fees.
+
+## What ships, and what does not
+
+- **Ships**: `xs_sparse` with its original five signals, picks-hedged, weekly,
+  as the wide arena's founder — the configuration nothing in two rounds could
+  beat. Plus a second founder with `vol_mode="portfolio", max_gross=0.6`, which
+  trades Sharpe for money and is the right trade for the stated objective.
+  Both enter as challengers; both must clear the gate; nothing is promotable
+  under PSR 0.95 yet.
+- **Does not ship**: `xs_complex`. The code stays — it is the control's
+  control — but it is not a founder. Four years of rolling out-of-sample losses
+  is a verdict.
+- **Does not ship**: the two-signal preset, index and anchor hedging, monthly
+  cadence. Each was a hypothesis this round and each was refuted.

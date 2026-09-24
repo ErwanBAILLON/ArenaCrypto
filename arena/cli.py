@@ -49,7 +49,19 @@ def _uname(universe, name: str) -> str:
     return name if universe.name == "crypto" else f"{name}_{universe.name}"
 
 
+# Founders of a point-in-time arena. Two rounds of evaluation (a held-out year,
+# then ten and seventeen quarters walked forward) could not beat the five-signal
+# picks-hedged weekly xs_sparse; the portfolio-sized variant trades Sharpe for
+# return. xs_complex lost money in twelve quarters of seventeen and is not seeded.
+WIDE_FOUNDERS: list[tuple[str, str, dict]] = [
+    ("xs_sparse", "xs_sparse_v1", {}),
+    ("xs_sparse", "xs_sparse_pvol_v1", {"vol_mode": "portfolio", "max_leverage": 3.0, "max_gross": 0.6}),
+]
+
+
 def founders_for(universe) -> list[tuple[str, str, dict]]:
+    if universe.membership.enabled:
+        return list(WIDE_FOUNDERS)
     return [f for f in FOUNDERS if universe.exchange == "binance" or f[0] not in FUNDING_FAMILIES]
 
 
