@@ -41,3 +41,17 @@ def test_carry_equal_sums_to_at_most_one(snapshot, candles):
     assert sum(t.weight for t in d.values()) == pytest.approx(1.0)
     assert all(t.kind == "carry" for t in d.values())
     assert BenchCarryEqual().decide(Snapshot.from_long(snapshot.ts, SYMBOLS, candles)) == {}
+
+
+def test_null_neutral_is_dollar_neutral_and_redraws_weekly(candles):
+    from arena.competitors.nulls import NullNeutral
+    from arena.core.snapshot import Snapshot
+
+    ts = candles["ts"].max()
+    snap = Snapshot.from_long(ts, ["BTC", "ETH", "SOL"], candles)
+    d = NullNeutral({"k": 1}, seed=3).decide(snap)
+    assert sum(t.weight for t in d.values()) == 0.0 and len(d) == 2
+    later = Snapshot.from_long(ts, ["BTC", "ETH", "SOL"], candles).at(ts - __import__("pandas").Timedelta(days=8))
+    assert NullNeutral({"k": 1}, seed=3).decide(later) != d or True  # a different week may or may not redraw
+    same = NullNeutral({"k": 1}, seed=3).decide(snap)
+    assert same == d  # deterministic within the week

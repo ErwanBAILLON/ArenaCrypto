@@ -12,6 +12,13 @@
   (dict "name" "classic-challenger" "args" (list "challenger") "schedule" .Values.classic.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false "universe" $u)
 ) }}
 {{- end }}
+{{- if .Values.wide.enabled }}
+{{- $w := .Values.wide.universePath }}
+{{- $jobs = concat $jobs (list
+  (dict "name" "wide-tick"     "args" (list "tick")           "schedule" .Values.wide.schedules.tick     "resources" .Values.resources.tick  "deadline" 3300  "tz" false "universe" $w)
+  (dict "name" "wide-universe" "args" (list "universe-build") "schedule" .Values.wide.schedules.universe "resources" .Values.resources.heavy "deadline" 7200  "tz" false "universe" $w)
+) }}
+{{- end }}
 {{- range $j := $jobs }}
 ---
 apiVersion: batch/v1

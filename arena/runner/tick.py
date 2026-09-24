@@ -127,8 +127,15 @@ def run(
     ingest: bool = True,
 ) -> TickReport:
     rep = TickReport(started_at=datetime.now(UTC))
+    current: list[str] | None = None
+    if universe.membership.enabled:
+        # who is tradable now decides what gets ingested; the config list is only a superset
+        current = [m.symbol for m in mstore.members_at(conn, universe.name, now)]
+        if not current:
+            log.warning("%s: no stored membership yet, run `arena universe-build` first", universe.name)
+            return rep
     if ingest and client is not None:
-        rep.ingested = ingest_market(conn, client, universe, now)
+        rep.ingested = ingest_market(conn, client, universe, now, symbols=current)
     ts = decision_bar(now, universe.bar_hours)
     last_bar = cstore.last_candle_ts(conn, universe.exchange, universe.reference, tf=universe.bar)
     stale = drift.stale_data(last_bar, now, max_lag_bars=2 if universe.bar_hours == 1 else 4 * 24)

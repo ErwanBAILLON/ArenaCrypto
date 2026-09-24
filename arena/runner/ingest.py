@@ -26,11 +26,21 @@ def _ms(ts: datetime) -> int:
 
 
 def ingest_market(
-    conn: psycopg.Connection, client: httpx.Client, universe: Universe, now: datetime, since: datetime | None = None
+    conn: psycopg.Connection,
+    client: httpx.Client,
+    universe: Universe,
+    now: datetime,
+    since: datetime | None = None,
+    symbols: list[str] | None = None,
 ) -> dict[str, int]:
-    """Market data of the universe's exchange for every symbol, from the last stored bar (or ``since``)."""
+    """Market data of the universe's exchange for every symbol, from the last stored bar (or ``since``).
+
+    ``symbols`` overrides the universe's fixed list: a point-in-time arena
+    ingests the current members, and its config list is only a superset.
+    """
     if universe.exchange == "yahoo":
         return ingest_yahoo(conn, client, universe, now)
+    names = list(symbols) if symbols is not None else list(universe.symbols)
     counts = {"candles": 0, "funding": 0, "oi": 0}
     failures: dict[str, int] = {"candles": 0, "funding": 0, "oi": 0}
     newest: dict[str, pd.Timestamp | None] = {"candles": None, "funding": None, "oi": None}
@@ -40,7 +50,7 @@ def ingest_market(
             ts = pd.Timestamp(df["ts"].max())
             newest[key] = ts if newest[key] is None else max(newest[key], ts)
 
-    for sym in universe.symbols:
+    for sym in names:
         bsym = universe.binance_symbol(sym)
         last = cstore.last_candle_ts(conn, EXCHANGE, sym)
         start = (last - timedelta(hours=2)) if last else (since or universe.history_start)
@@ -72,16 +82,16 @@ def ingest_market(
             conn,
             source,
             universe.name,
-            ok=failures[key] < len(universe.symbols),
+            ok=failures[key] < max(len(names), 1),
             last_data_ts=newest[key].to_pydatetime() if newest[key] is not None else None,
             rows_written=counts[key],
-            detail=f"{failures[key]}/{len(universe.symbols)} symbols failed" if failures[key] else "",
+            detail=f"{failures[key]}/{len(names)} symbols failed" if failures[key] else "",
             now=now,
         )
     conn.commit()
     try:
         ctx = hyperliquid.meta_and_asset_ctxs(client)
-        ctx = ctx[ctx["coin"].isin([universe.hyperliquid_coin(s) for s in universe.symbols])]
+        ctx = ctx[ctx["coin"].isin([universe.hyperliquid_coin(s) for s in names])]
         ts = pd.Timestamp(now).floor("1h")
         cstore.upsert_hl_snapshot(conn, ts, ctx)
         hstore.record_fetch(

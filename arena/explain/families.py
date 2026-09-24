@@ -132,6 +132,15 @@ CARDS: dict[str, FamilyCard] = {
             "La thèse qu'il teste est contestée (Nagel 2025) ; le panier simple existe précisément pour l'arbitrer.",
         ],
     ),
+    "null_neutral": FamilyCard(
+        "null_neutral",
+        "Repère : aléatoire neutre",
+        "Tire au hasard autant d'achats que de ventes, aux mêmes tailles et au même rythme que les paniers en coupe "
+        "transversale. Le repère aléatoire classique n'est pas neutre et perd surtout des frais ; celui-ci isole la "
+        "seule chose qu'un panier prétend faire : choisir.",
+        ["Rien : c'est le hasard"],
+        "Nouveau tirage chaque semaine",
+    ),
     "meta_label": FamilyCard(
         "meta_label",
         "Méta-étiquetage (filtre appris)",

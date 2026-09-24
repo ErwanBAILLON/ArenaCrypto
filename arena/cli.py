@@ -61,6 +61,9 @@ def nulls_for(universe) -> list[CompetitorSpec]:
     )
     specs = [mk("null_cash", "null_cash", {}, "null")]
     specs += [mk(f"null_random_{i}", "null_random", {"seed": i}, "null") for i in range(N_NULL_COMPETITORS)]
+    if universe.membership.enabled:
+        # a point-in-time arena runs cross-sectional books; their fair null is neutral
+        specs += [mk(f"null_neutral_{i}", "null_neutral", {"seed": i}, "null") for i in range(N_NULL_COMPETITORS)]
     if universe.exchange == "binance":
         specs.append(mk("bench_btc_hold", "bench_btc_hold", {}, "benchmark"))
         specs.append(mk("bench_carry_equal", "bench_carry_equal", {}, "benchmark"))
@@ -371,6 +374,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
 def universe_build(
     since: str = typer.Option("", help="Override the universe's history_start"),
     workers: int = typer.Option(12, help="Parallel archive downloads"),
+    backfill: bool = typer.Option(True, help="Also fetch hourly history for members lacking it"),
 ) -> None:
     """Rebuild the point-in-time universe from Binance's public archive.
 
@@ -399,6 +403,39 @@ def universe_build(
         f"{len(build.members_by_date)} dates, {written} rows"
     )
     typer.echo(f"  {len(build.symbols)} symbols were members at least once, weekly churn {build.churn:.1%}")
+    if backfill:
+        _backfill_members(conn, universe, build.symbols, start.to_pydatetime(), end, workers)
+
+
+def _backfill_members(conn, universe, symbols: list[str], start, end, workers: int) -> None:
+    """Hourly candles and funding from the archive for every member lacking history.
+
+    The incremental REST ingest only walks forward from the last stored bar, so
+    a symbol that joins the universe with no history would start life with a
+    single bar and never satisfy a warm-up. The archive fills the past once.
+    """
+    from arena.data import binance_archive as archive
+    from arena.data.http import make_client
+    from arena.runner.wide_backfill import fetch_many
+    from arena.store import candles as cstore
+
+    missing = [s for s in symbols if cstore.last_candle_ts(conn, "binance", s) is None]
+    typer.echo(f"  backfilling {len(missing)} symbols without stored history...")
+    frames = fetch_many(missing, start, end, "1h", workers)
+    rows = 0
+    for sym, frame in frames.items():
+        frame["symbol"] = sym
+        rows += cstore.upsert_candles(conn, "binance", frame)
+        conn.commit()
+    funded = 0
+    with make_client(timeout=60.0) as client:
+        for sym in missing:
+            f = archive.funding_history(client, sym, start, end)
+            if not f.empty:
+                f["symbol"] = sym
+                funded += cstore.upsert_funding(conn, "binance", f)
+                conn.commit()
+    typer.echo(f"  wrote {rows} candles and {funded} funding stamps")
 
 
 @app.command("train-xs")

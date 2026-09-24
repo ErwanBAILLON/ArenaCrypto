@@ -46,6 +46,17 @@ classic:
     challenger: "0 6 * * 0"
   bootstrap: { enabled: false, since: "2021-09-20" }
 
+# Third arena: a point-in-time top-50 of USDT perpetuals with per-symbol impact costs.
+# Membership is rebuilt weekly from Binance's public archive (delisted symbols included);
+# the tick restricts every snapshot to that week's members. Nothing here trains a model:
+# `arena train-xs` is run by hand, and what it inserts is a challenger the gate must admit.
+wide:
+  enabled: true
+  universePath: /app/config/universe-wide.yaml
+  schedules:
+    tick: "35 * * * *"           # offset from the crypto tick so the two never share the CPU
+    universe: "30 1 * * 1"       # Mondays, before the 02:00 weekly re-selection is needed
+
 bootstrap:
   enabled: false
   since: "2024-01-01"
