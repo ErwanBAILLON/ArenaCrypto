@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Interactive dashboard: uPlot charts (crosshair, tooltip, legend toggles, drag-zoom) with a marker for every real weight change in a competitor's book (entry, exit, reversal, resize, coloured by side) and a journal of who bought what, when, at which price and why. `/api/live`, `/api/series/{id}`, `/api/board`. The header shows the age of the last tick and the countdown to the next, refreshed every second; data refetches only when a tick has written. Selected dark mode, phone-width layout.
 - The panel grows to 117 columns: the lottery block (largest recent daily gains, skew, kurtosis, share of extreme days), trend quality (Kaufman efficiency ratio, Hurst proxy, ADX), betas to BTC and ETH with the ETH/BTC ratio's momentum, seasonality.
 - `xs_adaptive`: each week keeps only the candidates whose trailing-52-week rank IC is significant and weights them by it. Signals change sign with the regime; this changes signals with them, using nothing from the period it trades.
 - `positioning` (migration 0008): long/short account ratios, top-trader position ratios and taker buy/sell volume, stored every tick. Binance keeps thirty days; a history starts today.
