@@ -108,9 +108,20 @@ class TestSelection:
         sel = train_xs.select(dataset, n_features=400, gamma=0.02, n_groups=5, n_test=2, k=3)
         assert 0.0 <= sel.pbo["pbo"] <= 1.0
 
-    def test_noise_does_not_produce_a_positive_spread(self, dataset):
-        """Synthetic random walks have no cross-sectional signal. Finding one would be the bug."""
-        sel = train_xs.select(dataset, n_features=400, gamma=0.02, n_groups=5, n_test=2, k=3)
+    def test_noise_does_not_produce_a_positive_spread(self):
+        """Pure random walks, no drift anywhere: finding a spread here would be the bug.
+
+        The shared fixture gives BTC and DOGE a drift, so momentum legitimately
+        predicts there; this test builds its own driftless panel. The bar is loose
+        (0.01) because a spread over ~110 test rows and nine shrinkage values is a
+        noisy statistic even on noise.
+        """
+        candles = make_candles(symbols=SYMS, bars=24 * 260, seed=11)
+        funding = make_funding(symbols=SYMS, candles=candles, rate=0.0001)
+        stamps = sorted(candles["ts"].unique())
+        events = {pd.Timestamp(t): SYMS for t in stamps[24 * 100 :: 24 * 7]}
+        data = train_xs.build_dataset(candles, funding, events, ladder=LADDER, stop=0.06, costs=0.002)
+        sel = train_xs.select(data, n_features=400, gamma=0.02, n_groups=5, n_test=2, k=3)
         assert sel.score < 0.01
 
     def test_too_few_events_refuses_rather_than_guesses(self, data):
