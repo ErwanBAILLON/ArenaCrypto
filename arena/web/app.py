@@ -16,12 +16,13 @@ from typing import Any
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from arena.explain import families
 from arena.settings import Settings
 from arena.store.db import connect
-from arena.web import attribution, fr, queries, svg
+from arena.web import attribution, fr, live, queries, svg
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -107,6 +108,7 @@ def create_app(settings: Settings) -> FastAPI:
         raise ValueError("DATABASE_URL is required for the web dashboard")
     app = FastAPI(title="Arena", docs_url=None, redoc_url=None, openapi_url=None)
     templates = _templates()
+    app.mount("/static", StaticFiles(directory=str(TEMPLATES_DIR.parent / "static")), name="static")
 
     def get_conn() -> Iterator[psycopg.Connection]:
         conn = connect(settings.database_url)
@@ -148,7 +150,8 @@ def create_app(settings: Settings) -> FastAPI:
         series = queries.nav_series(conn, [competitor_id], start, now)
         series = {k: v * queries.NAV0 for k, v in series.items()}
         chart = svg.line_chart(series, title=f"{page.card.title} : 10 000 € virtuels depuis le début", y_label="€")
-        return render(request, "competitor.html", p=page, chart=chart, active="home")
+        days = max(1, int((now - start).days) + 1) if page.first_ts else 90
+        return render(request, "competitor.html", p=page, chart=chart, chart_days=min(days, 3650), active="home")
 
     @app.get("/competitors/{competitor_id}/attribution", response_class=HTMLResponse)
     def attribution_page(
@@ -198,6 +201,25 @@ def create_app(settings: Settings) -> FastAPI:
         stale = queries.is_stale(last, _now())
         body = {"ok": not stale, "last_bar": last.isoformat() if last else None}
         return JSONResponse(body, status_code=503 if stale else 200)
+
+    @app.get("/api/live")
+    def api_live(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
+        """The two facts a page may animate every second, and whether anything else changed."""
+        return JSONResponse(live.live_state(conn, _now()))
+
+    @app.get("/api/series/{competitor_id}")
+    def api_series(competitor_id: int, days: int = 90, conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
+        """One competitor's NAV with every trade that changed its book, for the chart."""
+        body = live.competitor_series(conn, competitor_id, max(1, min(days, 3650)), _now())
+        if not body:
+            raise HTTPException(status_code=404, detail="unknown competitor")
+        return JSONResponse(body)
+
+    @app.get("/api/board")
+    def api_board(days: int = 90, conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
+        """Champions and benchmarks, normalised to 100, on one time axis."""
+        board = queries.leaderboard(conn, _now())
+        return JSONResponse(live.board_series(conn, board.chart_ids, max(1, min(days, 3650)), _now()))
 
     @app.get("/api/leaderboard.json")
     def leaderboard_json(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:

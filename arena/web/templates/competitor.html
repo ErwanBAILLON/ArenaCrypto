@@ -75,7 +75,22 @@
 </div>
 
 <h2>{{ p.card.title }} : 10 000 € virtuels depuis le début</h2>
-<div class="card">{{ chart|safe }}</div>
+<div class="card">
+  <div class="chartbox" data-chart="competitor" data-competitor="{{ p.spec.id }}" data-days="{{ chart_days }}"></div>
+  <noscript>{{ chart|safe }}</noscript>
+  <p class="legend">Chaque marque sur la courbe est un mouvement réel du livre : ▲ entrée, ▼ sortie, ◆ retournement, ● changement de taille — vert pour un achat, rouge pour une vente. Survole la courbe pour lire la valeur et les mouvements de l'heure ; survole une ligne du journal pour la retrouver sur la courbe.</p>
+</div>
+
+<h2>Journal : qui achète quoi, et quand</h2>
+<div class="card">
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Quand (UTC)</th><th>Mouvement</th><th>Actif</th><th>Sens</th><th class="n">Poids avant → après</th><th class="n">Prix</th><th>Pourquoi</th></tr></thead>
+  <tbody id="events-table"><tr><td colspan="7" class="muted">chargement…</td></tr></tbody>
+</table>
+</div>
+<p class="legend">Reconstruit barre par barre depuis les cibles enregistrées : rien ici n'est déclaratif, chaque ligne est un poids qui a changé dans le livre. « Pourquoi » reprend les raisons que le modèle a lui-même écrites au moment de décider.</p>
+</div>
 
 <h2>Ses dernières actions</h2>
 <div class="card">

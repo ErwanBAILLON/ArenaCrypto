@@ -24,6 +24,14 @@
 </div>
 {% endif %}
 
+<h2>Le livre en direct <span class="muted small">positions réellement tenues, mises à jour à chaque passage</span></h2>
+<div class="grid wide">
+  <div class="card"><div id="live-positions"><span class="muted">chargement…</span></div>
+    <p class="legend">Barre verte : achat ; rouge : vente. Longueur = poids relatif dans le livre du modèle.</p></div>
+  <div class="card"><h3>Derniers mouvements <span class="muted small">48 h</span></h3><ul class="feed" id="live-events"><li class="muted">chargement…</li></ul>
+    <p class="legend">▲ entrée · ▼ sortie · ◆ retournement · ● changement de taille</p></div>
+</div>
+
 <h2>Qui parle en ce moment</h2>
 {% for c in live.champions %}
 <div class="card">
@@ -143,7 +151,10 @@ Pire creux = la plus forte baisse depuis un sommet.</p>
 {% endif %}
 </div>
 
-<h2>10 000 € virtuels : évolution sur 90 jours</h2>
-<div class="card">{{ chart|safe }}
-<p class="legend">Champions et repères, chacun parti de 10 000 €.</p></div>
+<h2>Champions et repères, base 100 <span class="muted small">90 jours</span></h2>
+<div class="card">
+  <div class="chartbox" data-chart="board" data-days="90"></div>
+  <noscript>{{ chart|safe }}</noscript>
+  <p class="legend">Survole pour lire chaque courbe à une date ; clique un nom dans la légende pour le masquer ; glisse horizontalement pour zoomer, double-clic pour revenir. Les repères sont en pointillés. Les courbes se rafraîchissent quand un passage a réellement écrit.</p>
+</div>
 {% endblock %}
