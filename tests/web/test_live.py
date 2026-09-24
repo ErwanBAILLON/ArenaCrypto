@@ -152,3 +152,28 @@ class TestEndpoints:
         assert 'data-chart="board"' in client.get("/").text
         page = client.get(f"/competitors/{seeded}").text
         assert 'data-chart="competitor"' in page and 'id="events-table"' in page
+
+
+class TestBook:
+    def test_book_marks_every_agent_with_reference_prices_and_streams(self, conn, seeded):
+        state = live.book_state(conn, NOW)
+        agent = next(a for a in state["agents"] if a["id"] == seeded)
+        assert agent["nav"] > 0 and agent["base"]["all"] == pytest.approx(10_000.0 * 1.0001, rel=1e-3)
+        eth = next(p for p in agent["positions"] if p["symbol"] == "ETH")
+        assert eth["weight"] == 0.1 and eth["ref_price"] is not None
+        assert eth["pair"] == "ETHUSDT"  # binance-sourced candles get a live perp price
+        assert state["pairs"] == ["ETHUSDT"] and state["rest"].startswith("https://fapi.binance.com/")
+        assert state["ws"] == "wss://data-stream.binance.vision/stream?streams=ethusdt@miniTicker"
+        assert state["version"] > 0
+
+    def test_binance_pair_names(self):
+        assert live.binance_pair("BTC") == "BTCUSDT"
+        assert live.binance_pair("BTCUSDT") == "BTCUSDT"
+
+    def test_endpoints_and_pages(self, client, seeded):
+        book = client.get("/api/book").json()
+        assert [a["id"] for a in book["agents"]] == [seeded]
+        home = client.get("/").text
+        assert 'id="board"' in home and "/static/board.js" in home and 'data-chart="board"' in home
+        assert client.get("/systeme").status_code == 200
+        assert client.get("/static/board.js").status_code == 200

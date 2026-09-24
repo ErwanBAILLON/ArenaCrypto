@@ -73,6 +73,24 @@ details summary { cursor:pointer; color:var(--muted); } ul.plain { margin:6px 0;
 .poslab { color:var(--fg2); } .posbar { display:block; height:8px; border-radius:4px; background:var(--long); min-width:2px; } .posbar.short { background:var(--short); } .posval { text-align:right; color:var(--fg2); }
 tr.ev.long td:first-child { border-left:3px solid var(--long); } tr.ev.short td:first-child { border-left:3px solid var(--short); }
 .chips { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 10px; } .chip { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:2px 10px; font-size:12.5px; color:var(--fg2); cursor:pointer; } .chip.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+
+/* the agents board */
+@media (min-width:1100px) { .grid.board-grid { grid-template-columns:minmax(0,3fr) minmax(280px,1fr); } }
+.board-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:6px 16px; }
+.board-meta { display:flex; align-items:center; gap:6px; }
+.board th[data-sort] { cursor:pointer; user-select:none; white-space:nowrap; } .board th[data-sort]:hover { color:var(--fg); }
+.board th.sorted::after { content:" ▾"; } .board th.sorted.asc::after { content:" ▴"; }
+.board tr.agent { cursor:pointer; } .board tr.agent:hover td { background:color-mix(in oklab, var(--pill) 50%, transparent); }
+.board tr.bench td { color:var(--fg2); } .board td.rank { color:var(--muted); width:2.5em; }
+.board td .sub { font-size:12px; color:var(--muted); font-weight:400; }
+.board td.live { font-weight:600; font-variant-numeric:tabular-nums; }
+.board td.up { animation:flashUp .8s ease-out; } .board td.down { animation:flashDown .8s ease-out; }
+@keyframes flashUp { from { background:var(--ok-bg); } to { background:transparent; } }
+@keyframes flashDown { from { background:var(--bad-bg); } to { background:transparent; } }
+.board tr.detail > td { padding:6px 8px 12px 2.5em; background:color-mix(in oklab, var(--pill) 40%, transparent); }
+table.positions { width:auto; min-width:60%; font-size:13px; } table.positions th, table.positions td { padding:4px 10px; border-bottom:1px solid var(--line); }
+table.positions tr.long td.sym { border-left:3px solid var(--long); } table.positions tr.short td.sym { border-left:3px solid var(--short); }
+.feed li.new { animation:flashUp 2.5s ease-out; }
 </style>
 </head>
 <body>
@@ -83,6 +101,7 @@ tr.ev.long td:first-child { border-left:3px solid var(--long); } tr.ev.short td:
     <a href="/modeles" class="{{ 'active' if active == 'modeles' }}">Les familles</a>
     <a href="/trials" class="{{ 'active' if active == 'trials' }}">Tests</a>
     <a href="/alerts" class="{{ 'active' if active == 'alerts' }}">Alertes</a>
+    <a href="/systeme" class="{{ 'active' if active == 'systeme' }}">Système</a>
   </nav>
   <div class="live" title="Argent virtuel, aucun ordre passé. L'arène décide une fois par heure.">
     <span id="live-dot" class="live-dot"></span>
@@ -96,5 +115,6 @@ tr.ev.long td:first-child { border-left:3px solid var(--long); } tr.ev.short td:
 </main>
 <script src="/static/uPlot.iife.min.js"></script>
 <script src="/static/arena.js"></script>
+<script src="/static/board.js"></script>
 </body>
 </html>

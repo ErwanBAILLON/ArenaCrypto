@@ -77,9 +77,11 @@
     if (dot) dot.className = "live-dot " + (state.tick_ok === false ? "bad" : state.tick_ok ? "ok" : "warn");
     const box = document.getElementById("live-events");
     if (box) {
+      const seen = Number(box.dataset.maxT || 0);
       box.textContent = "";
       for (const e of state.recent_events) {
         const li = document.createElement("li");
+        if (seen && e.t > seen) li.className = "new";
         const g = document.createElement("span");
         g.className = "glyph " + e.side; g.textContent = KIND_GLYPH[e.kind] || "●";
         const t = document.createElement("span"); t.className = "time"; t.textContent = fmtTs(e.t);
@@ -90,6 +92,7 @@
         box.appendChild(li);
       }
       if (!state.recent_events.length) { const li = document.createElement("li"); li.className = "muted"; li.textContent = "aucun mouvement sur 48 h"; box.appendChild(li); }
+      box.dataset.maxT = String(Math.max(seen, ...state.recent_events.map((e) => e.t)));
     }
     const pos = document.getElementById("live-positions");
     if (pos) {
@@ -271,5 +274,6 @@
     if (toggle) toggle.addEventListener("click", () => { const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark"; try { localStorage.setItem("arena-theme", document.documentElement.dataset.theme); } catch (e) {} location.reload(); });
   }
   try { const saved = localStorage.getItem("arena-theme"); if (saved) document.documentElement.dataset.theme = saved; } catch (e) {}
+  window.Arena = { onTick, countdown, fmtTs, KIND_GLYPH, palette };
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", boot); else boot();
 })();

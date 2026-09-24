@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Arène · Système{% endblock %}
+{% block content %}
+<h2>Système</h2>
+
+{% set t = live.tick %}
+<div class="banner {{ 'bad' if live.alarm }}">
+  {% if t %}
+  <strong>Dernier passage à {{ t.finished_at|heure }} UTC</strong> <span class="muted">({{ t.finished_at|ago(now) }})</span>
+  — {{ t.booked }} modèle{{ 's' if t.booked != 1 }} évalué{{ 's' if t.booked != 1 }},
+  {{ t.changes }} {{ 'ont' if t.changes != 1 else 'a' }} changé de position,
+  {{ t.alerts }} alerte{{ 's' if t.alerts != 1 }}.
+  {% else %}<strong>Aucun passage enregistré.</strong>{% endif %}
+  {% if live.alarm %}<div class="neg" style="margin-top:6px"><strong>Attention :</strong> {{ live.alarm }}</div>{% endif %}
+  <div class="muted small" style="margin-top:4px">Un « passage » = une évaluation de tous les modèles sur la dernière heure de cours. Les montants sont ceux d'un portefeuille virtuel de 10 000 € par modèle ; aucun ordre n'est jamais passé.</div>
+</div>
+
+{% if maturity %}
+<div class="banner warn">
+  <strong>L'arène tourne depuis {{ maturity.days }} jour{{ 's' if maturity.days != 1 }}.</strong>
+  {% if maturity.proven == 0 %}Aucun modèle n'a encore prouvé quoi que ce soit, et c'est l'état attendu : il faut environ six semaines de marche en avant avant qu'un résultat cesse d'être du bruit.{% else %}{{ maturity.proven }} modèle{{ 's' if maturity.proven != 1 }} {{ 'ont' if maturity.proven != 1 else 'a' }} dépassé le seuil de preuve.{% endif %}
+  {% if maturity.first_eligible %}Le premier prétendant devient éligible à la promotion le {{ maturity.first_eligible|date_fr }}.{% endif %}
+  <div class="muted small" style="margin-top:4px">Les gains et les Sharpe affichés plus bas sont réels mais pas encore significatifs. Un modèle n'est promu champion que s'il a passé le test d'entrée, tourné {{ maturity.min_days }} jours ou pris {{ maturity.min_decisions }} décisions, et battu la chance <em>et</em> le champion en place avec 95 % de certitude.</div>
+</div>
+{% endif %}
+
+<h2>Le livre en direct <span class="muted small">positions réellement tenues, mises à jour à chaque passage</span></h2>
+<div class="grid wide">
+  <div class="card"><div id="live-positions"><span class="muted">chargement…</span></div>
+    <p class="legend">Barre verte : achat ; rouge : vente. Longueur = poids relatif dans le livre du modèle.</p></div>
+  <div class="card"><h3>Derniers mouvements <span class="muted small">48 h</span></h3><ul class="feed" id="live-events"><li class="muted">chargement…</li></ul>
+    <p class="legend">▲ entrée · ▼ sortie · ◆ retournement · ● changement de taille</p></div>
+</div>
+
+<h2>Qui parle en ce moment</h2>
+{% for c in live.champions %}
+<div class="card">
+  <h3><a href="/competitors/{{ c.spec.id }}">{{ c.card.title }}</a> <span class="pill champion">champion</span> <span class="pill">{{ c.spec.universe|universe_fr }}</span> <span class="muted small">{{ c.spec.name }}</span></h3>
+  <p class="small muted">{{ c.card.summary }}</p>
+  {% if c.positions %}
+  <ul class="plain">
+    {% for p in c.positions %}
+    <li>{{ p.sentence }} <span class="muted small">Tenue depuis {{ p.since|date_heure }} UTC ({{ p.held_for|duree }}){% if p.value_eur is not none %}, soit ≈ {{ p.value_eur|round|int }} € engagés{% endif %}.</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">Aucune position : le modèle est en cash.</p>{% endif %}
+  <div class="kpis">
+    {% for key, label in [('today', "Aujourd'hui"), ('7d', '7 jours'), ('30d', '30 jours')] %}{% set w = c.pnl[key] %}
+    <div class="kpi"><div class="v {{ w.eur|sign_css if w else '' }}">{{ w.eur|euros if w else '—' }}</div><div class="l">{{ label }}{% if w %} · {{ w.frac|pct_fr }}{% endif %}</div></div>
+    {% endfor %}
+  </div>
+  <details><summary>Comparer aux repères</summary>
+    {% with pnl=c.pnl, bench=live.bench, title=c.card.title %}{% include "_pnl_table.html" %}{% endwith %}
+  </details>
+</div>
+{% else %}
+<div class="card muted">Aucun modèle champion pour l'instant : personne ne parle. Les repères tournent, les prétendants sont observés.</div>
+{% endfor %}
+
+<h2>Ce qui a changé depuis 24 h</h2>
+{% for c in live.changes %}
+<div class="card">
+  <h3><a href="/competitors/{{ c.spec.id }}">{{ c.card.title }}</a> <span class="pill {{ c.spec.status }}">{{ status_fr(c.spec.role, c.spec.status) }}</span></h3>
+  <ul class="plain">
+    {% for l in c.lines %}<li><span class="pill {{ l.change }}">{{ l.change }}</span> {{ l.sentence }}</li>{% endfor %}
+  </ul>
+</div>
+{% else %}
+<div class="card muted">Aucune entrée, sortie ni changement de taille depuis 24 h.</div>
+{% endfor %}
+
+<h2>Sur quoi l'arène se base</h2>
+<div class="card">
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Source</th><th>Dernière donnée</th><th>Dernière récupération</th><th></th></tr></thead>
+  <tbody>
+  {% for s in live.sources %}
+  <tr><td><span class="dot {{ s.level }}"></span>{{ s.label }}</td>
+      <td>{{ s.data_ts|date_heure if s.data_ts else 'jamais' }}{% if s.count_24h is not none %} <span class="muted small">· {{ s.count_24h }} sur 24 h</span>{% endif %}</td>
+      <td>{{ s.last_ok|ago(now) if s.last_ok else 'jamais' }}</td>
+      <td class="muted small">{% if s.level == 'ok' %}à jour{% elif s.level == 'warn' %}en retard{% else %}très en retard{% endif %}{% if s.detail %} — {{ s.detail }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="legend">« Dernière récupération » = la dernière fois qu'une interrogation a abouti, pas la dernière fois qu'une donnée a changé : un calendrier macro déjà connu n'écrit rien et se porte très bien. Chaque source a sa propre tolérance (de 3 h pour les cours à 12 h pour le funding, qui n'est publié que toutes les 8 h). Vert : bien dans les temps. Orange : à la limite. Rouge : au-delà, et une alerte part.</p>
+</div>
+
+<h2>Fil d'activité</h2>
+<div class="grid two">
+<div class="card">
+  <h3>Passages du système</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Heure</th><th class="n">Évalués</th><th class="n">Changements</th><th class="n">Alertes</th><th>Résultat</th></tr></thead>
+    <tbody>
+    {% for t in live.ticks %}
+    <tr><td class="time">{{ t.finished_at|date_heure }}</td><td class="n">{{ t.booked }}</td><td class="n">{{ t.changes }}</td><td class="n">{{ t.alerts }}</td>
+        <td>{% if t.ok %}<span class="pos">OK</span>{% else %}<span class="neg">échec</span> <span class="muted small">{{ t.failed|join(', ') }}</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">aucun passage</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+<div class="card">
+  <h3>Dernières alertes</h3>
+  <ul class="feed">
+    {% for a in live.alerts %}
+    <li><span class="time">{{ a.ts|date_heure }}</span><span class="pill">{{ a.kind_fr }}</span>
+        {% if a.competitor_id %}<a href="/competitors/{{ a.competitor_id }}">{{ a.family|family_title }}</a> :{% endif %} {{ a.sentence }}</li>
+    {% else %}<li class="muted">aucune alerte</li>{% endfor %}
+  </ul>
+  <p class="legend"><a href="/alerts">Toutes les alertes</a></p>
+</div>
+</div>
+
+<h2>Classement des 30 derniers jours</h2>
+<div class="card">
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Arène</th><th>Modèle</th><th>Statut</th><th class="n">Sharpe ± marge</th><th class="n">Certitude</th><th>Conclusion</th><th class="n">Résultat</th><th class="n">Pire creux</th><th class="n">Valeur du livre</th><th class="n">Barres</th></tr></thead>
+  <tbody>
+  {% for r in board.rows %}
+  <tr>
+    <td><span class="pill">{{ r.universe|universe_fr }}</span></td>
+    <td>{% if r.role == 'null' %}<span class="muted">Repère : aléatoire</span> <span class="muted small">{{ r.name }}</span>{% else %}<a href="/competitors/{{ r.id }}">{{ r.family|family_title }}</a> <span class="muted small">{{ r.name }}</span>{% endif %}</td>
+    <td><span class="pill {{ status_css(r.role, r.status) }}">{{ status_fr(r.role, r.status) }}</span></td>
+    <td class="n">{{ sharpe_fr(r.sharpe_30d, r.sharpe_se_30d) }}</td>
+    <td class="n">{{ psr_fr(r.psr) }}</td>
+    <td class="{{ 'pos' if r.conclusive else 'muted' }} small">{{ evidence_fr(r) }}</td>
+    <td class="n {{ r.ret_30d|sign_css }}">{{ r.ret_30d|pct_fr }}</td>
+    <td class="n">{{ r.mdd_30d|pct_fr }}</td>
+    <td class="n">{% if r.role == 'null' %}—{% else %}{{ r.nav|round|int }} €{% endif %}</td>
+    <td class="n muted">{{ r.bars_30d }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="10" class="muted">aucun champion ni prétendant pour l'instant</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="legend"><strong>Sharpe</strong> = rendement ajusté du risque, suivi de sa marge d'erreur. Sur quelques jours de données, la marge est plus grande que l'estimation : le chiffre ne veut encore rien dire, et c'est pour cela que le classement est trié sur la colonne suivante.
+<strong>Certitude</strong> = probabilité que le modèle batte vraiment la chance, calculée sur le nombre d'observations <em>indépendantes</em> (un modèle qui garde sa position une semaine ne fournit pas 168 preuves par semaine, il en fournit une). Il faut 95 % pour qu'un prétendant puisse devenir champion.
+<strong>Conclusion</strong> = temps qu'il faudrait encore, au rythme actuel, pour atteindre ces 95 %.
+{% if board.null95 is not none %}La chance (95e centile des modèles aléatoires) vaut <strong>{{ board.null95|num_fr }}</strong> sur 30 jours.{% else %}Le seuil de la chance n'est pas encore calculable.{% endif %}
+Pire creux = la plus forte baisse depuis un sommet.</p>
+{% if board.allocation %}
+<p class="legend">Avis de répartition publié sur Telegram (jamais un ordre) :
+  {% for name, w in board.allocation %}{{ name }} {{ (w * 100)|round(0)|int }}%{{ ', ' if not loop.last }}{% endfor %}.</p>
+{% endif %}
+</div>
+
+<h2>Champions et repères, base 100 <span class="muted small">90 jours</span></h2>
+<div class="card">
+  <div class="chartbox" data-chart="board" data-days="90"></div>
+  <noscript>{{ chart|safe }}</noscript>
+  <p class="legend">Survole pour lire chaque courbe à une date ; clique un nom dans la légende pour le masquer ; glisse horizontalement pour zoomer, double-clic pour revenir. Les repères sont en pointillés. Les courbes se rafraîchissent quand un passage a réellement écrit.</p>
+</div>
+{% endblock %}

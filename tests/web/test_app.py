@@ -170,7 +170,7 @@ def client(pg_url):
 
 
 def test_index_live_sections_in_french(client, seeded) -> None:
-    r = client.get("/")
+    r = client.get("/systeme")
     assert r.status_code == 200
     for heading in ("En direct", "Qui parle", "Ce qui a changé", "Sur quoi l'arène se base", "Fil d'activité"):
         assert heading in r.text, heading
@@ -197,7 +197,7 @@ def test_index_live_sections_in_french(client, seeded) -> None:
 def test_index_red_banner_on_failed_tick(client, seeded, conn) -> None:
     _tick(conn, NOW - timedelta(minutes=5), 4, 0, 1, ["carry_v1"])
     conn.commit()
-    r = client.get("/")
+    r = client.get("/systeme")
     assert 'class="banner bad"' in r.text and "a échoué pour : carry_v1" in r.text
 
 
@@ -354,7 +354,7 @@ def test_maturity_says_how_young_the_arena_is(client, seeded, conn) -> None:
 
 
 def test_the_front_page_opens_by_saying_nothing_is_proven(client, seeded) -> None:
-    text = client.get("/").text
+    text = client.get("/systeme").text
     assert "L'arène tourne depuis" in text
     assert "95 % de certitude" in text  # the promotion bar, stated before any number is shown
     assert "Certitude" in text and "Conclusion" in text

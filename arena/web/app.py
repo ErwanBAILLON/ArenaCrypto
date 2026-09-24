@@ -122,6 +122,10 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
+        return render(request, "index.html", active="home")
+
+    @app.get("/systeme", response_class=HTMLResponse)
+    def systeme(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
         now = _now()
         live = queries.live_page(conn, now)
         board = queries.leaderboard(conn, now)
@@ -132,12 +136,12 @@ def create_app(settings: Settings) -> FastAPI:
         )
         return render(
             request,
-            "index.html",
+            "systeme.html",
             live=live,
             board=board,
             chart=chart,
             maturity=queries.maturity(conn, board, now),
-            active="home",
+            active="systeme",
         )
 
     @app.get("/competitors/{competitor_id}", response_class=HTMLResponse)
@@ -207,6 +211,11 @@ def create_app(settings: Settings) -> FastAPI:
         """The two facts a page may animate every second, and whether anything else changed."""
         return JSONResponse(live.live_state(conn, _now()))
 
+    @app.get("/api/book")
+    def api_book(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
+        """Every agent's stored book with the reference prices the browser marks to market."""
+        return JSONResponse(live.book_state(conn, _now()))
+
     @app.get("/api/series/{competitor_id}")
     def api_series(competitor_id: int, days: int = 90, conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
         """One competitor's NAV with every trade that changed its book, for the chart."""
@@ -219,7 +228,8 @@ def create_app(settings: Settings) -> FastAPI:
     def api_board(days: int = 90, conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
         """Champions and benchmarks, normalised to 100, on one time axis."""
         board = queries.leaderboard(conn, _now())
-        return JSONResponse(live.board_series(conn, board.chart_ids, max(1, min(days, 3650)), _now()))
+        ids = [r["id"] for r in board.rows if r["role"] != "null"][:8]
+        return JSONResponse(live.board_series(conn, ids, max(1, min(days, 3650)), _now()))
 
     @app.get("/api/leaderboard.json")
     def leaderboard_json(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:

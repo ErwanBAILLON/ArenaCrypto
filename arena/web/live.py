@@ -23,10 +23,12 @@ import psycopg
 
 from arena.store import books as bstore
 from arena.store import registry
+from arena.web import queries
 
 TICK_MINUTE = 5  # helm: schedules.tick "5 * * * *"
 EVENT_EPS = 1e-6
 SIZE_STEP = 0.05  # below this a weight move is dust, not an event
+_WINDOWS = ("today", "7d", "30d", "all")  # the P&L bases the board can be re-marked against
 
 
 def next_tick(now: datetime, minute: int = TICK_MINUTE) -> datetime:
@@ -271,3 +273,106 @@ def live_state(conn: psycopg.Connection, now: datetime) -> dict:
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _exchanges(conn: psycopg.Connection, symbols: list[str]) -> dict[str, str]:
+    if not symbols:
+        return {}
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT symbol, exchange FROM candles WHERE symbol = ANY(%s)", (symbols,))
+        return {r["symbol"]: r["exchange"] for r in cur.fetchall()}
+
+
+FUTURES_PRICES = "https://fapi.binance.com/fapi/v1/ticker/price"  # public, CORS-open, every pair in one call
+SPOT_STREAM = "wss://data-stream.binance.vision/stream?streams="  # public market-data host, fallback only
+
+
+def binance_pair(symbol: str) -> str:
+    """The USDⓈ-M perpetual for a stored symbol (``BTC`` or ``BTCUSDT``)."""
+    return symbol if symbol.endswith("USDT") else f"{symbol}USDT"
+
+
+def book_state(conn: psycopg.Connection, now: datetime) -> dict:
+    """Everything the live board needs to mark every agent to market in the browser.
+
+    The tick writes each book once an hour at the bar's close. Between two
+    ticks the positions are known and the prices move, so the page can value
+    ``nav × (1 + Σ w·(p_live/p_ref − 1))`` on every price update -- an honest
+    mark-to-market of the stored book, not a prediction of what the next tick
+    will decide. Prices come from Binance's public futures REST (the perps the
+    book actually trades; the futures websocket opens but streams nothing from
+    some regions), with the spot market-data websocket as a fallback. Equity
+    tickers have no public live feed and keep their last hourly close.
+    """
+    board = queries.leaderboard(conn, now)
+    stats = {r["id"]: r for r in board.rows}
+    specs = [
+        s
+        for s in registry.list_competitors(conn, statuses=["champion", "challenger"])
+        if s.family != queries.NULL_RANDOM_FAMILY and s.role != "null"
+    ]
+    all_syms: set[str] = set()
+    raw = []
+    for s in specs:
+        held = bstore.last_targets(conn, s.id)
+        positions = dict(held[1]) if held else {}
+        all_syms |= set(positions)
+        raw.append((s, held[0] if held else None, positions))
+    exchanges = _exchanges(conn, sorted(all_syms))
+    agents = []
+    for s, pos_ts, positions in raw:
+        pnl = queries.pnl_windows(conn, s.id, now)
+        if pnl["nav"] is None:
+            continue
+        ref_ts = pnl["nav_ts"]
+        prices = _closes(conn, sorted(positions), ref_ts - timedelta(hours=3), ref_ts) if positions else pd.DataFrame()
+        plist = []
+        for sym, (kind, w) in sorted(positions.items(), key=lambda kv: -abs(kv[1][1])):
+            ref = None
+            if not prices.empty and sym in prices.columns:
+                p = prices[sym].asof(pd.Timestamp(ref_ts))
+                ref = float(p) if p == p else None
+            since = queries.first_ts_of_position(conn, s.id, sym, w, pos_ts) if pos_ts else None
+            plist.append(
+                {
+                    "symbol": sym,
+                    "weight": round(w, 4),
+                    "kind": kind,
+                    "ref_price": ref,
+                    "pair": binance_pair(sym) if exchanges.get(sym) == "binance" and ref else None,
+                    "since": since.isoformat() if since else None,
+                }
+            )
+        st = stats.get(s.id, {})
+        agents.append(
+            {
+                "id": s.id,
+                "name": s.name,
+                "family": s.family,
+                "status": s.status,
+                "role": s.role,
+                "universe": s.universe,
+                "nav": round(float(pnl["nav"]), 2),
+                "nav_ts": ref_ts.isoformat(),
+                "base": {k: (round(float(pnl["nav"]) - pnl[k]["eur"], 2) if pnl[k] else None) for k in _WINDOWS},
+                "sharpe_30d": st.get("sharpe_30d"),
+                "sharpe_se_30d": st.get("sharpe_se_30d"),
+                "psr": st.get("psr"),
+                "mdd_30d": st.get("mdd_30d"),
+                "bars_30d": st.get("bars_30d"),
+                "positions": plist,
+            }
+        )
+    pairs = sorted({p["pair"] for a in agents for p in a["positions"] if p["pair"]})
+    with conn.cursor() as cur:
+        cur.execute("SELECT max(ts) AS ts FROM books")
+        last_bar = cur.fetchone()["ts"]
+    return {
+        "now": now.isoformat(),
+        "agents": agents,
+        "pairs": pairs,
+        "rest": FUTURES_PRICES if pairs else None,
+        "ws": SPOT_STREAM + "/".join(f"{p.lower()}@miniTicker" for p in pairs) if pairs else None,
+        "next_tick": next_tick(now).isoformat(),
+        "version": int(last_bar.timestamp()) if last_bar else 0,
+    }
