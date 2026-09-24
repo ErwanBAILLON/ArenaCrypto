@@ -15,9 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A ~100-column point-in-time feature panel** (`arena.features`), each raw column shipping with its cross-sectional rank.
 - **Two new families, differing only in the predictor**: `xs_sparse` (an unfitted rank composite, Nagel's control) and `xs_complex` (random Fourier features and ridge, the Kelly-Malamud-Zhou machinery applied to the panel). Both dollar-neutral, both closing on the ROI ladder that labelled them. `arena train-xs` trains the second and refuses to insert anything when PBO says the winner does not generalise.
 - **An attribution page** per competitor: P&L by symbol, side, conviction and holding time, the worst twelve trades, and a reliability diagram answering whether a stated 70 % confidence happens 70 % of the time. Derived from stored targets, so it works retroactively for every family.
+- `hedge` (`picks` | `index` | `anchor`), `vol_mode` (`names` | `portfolio`), `max_gross`, `max_leverage` and `rebalance_every_weeks` on both cross-sectional families, through one shared sizing path. The picks-hedged short leg had negative alpha out of sample and the book realised 2.3 % volatility against a 20 % target; these are the levers that address both.
+- `TWO_SIGNALS`, a pre-registered two-signal preset (low volatility + Donchian position). Not the default: choosing it on the year it was read from would be fitting to the test set.
+- `train_xs.search`: sweeps width and bandwidth as well as shrinkage and computes PBO across the whole grid. PBO over a shrinkage path alone read 0.00 and meant little.
+- `null_neutral`: a random dollar-neutral book at the families' own cadence and size, so "beats the null" measures selection rather than turnover.
+- The wide arena in the chart (`wide.*`): hourly tick and weekly `universe-build`, which also backfills hourly history and funding from the archive for members without any.
 - `config/universe-wide.yaml`, a third arena using both of the above. The crypto and classic arenas are unchanged and no past verdict is revised.
 
 ### Fixed
+- A position closed on the ROI ladder stayed in the parent's held book and re-entered after the cooldown at its old weight without re-selection: close, wait a day, re-enter, close again.
 - `Snapshot.at` can narrow the visible symbols, and the backtest takes `members_at` / `liquidity_at`, so a point-in-time universe can be scored at all. The warm-up reference was hardcoded to BTC and otherwise fell back to the alphabetically first symbol, which in a wide universe can be one that listed last month.
 - A ROI rung of 0 % is freqtrade's force-exit, not a profit target; reading it as one labelled a symbol that exactly matched the market as a winner.
 - Purging against the hull of all test rows emptied every combinatorial split whose blocks sat at opposite ends of the sample, and `DatetimeIndex.asi8` (microseconds here) mixed with `Timedelta.value` (always nanoseconds) turned a four-hour embargo into 198 days.
