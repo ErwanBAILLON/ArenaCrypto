@@ -260,3 +260,84 @@ def train(data: Dataset, selection: Selection, seed: int = 0) -> rff.RffRidge:
             "max_overlap_ns": selection.leakage.get("max_overlap_ns"),
         },
     )
+
+
+# --------------------------------------------------------------------------- the search over the search
+
+
+@dataclass
+class Search:
+    best: Selection
+    grid: list[Selection]
+    pbo: dict
+
+    @property
+    def table(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            [{"n_features": s.n_features, "gamma": s.gamma, "lam": s.lam, "cv_spread": s.score} for s in self.grid]
+        ).sort_values("cv_spread", ascending=False)
+
+
+def search(
+    data: Dataset,
+    widths=(500, 2_000),
+    gammas=(0.005, 0.02, 0.08),
+    lambdas=rff.DEFAULT_LAMBDAS,
+    n_groups: int = 6,
+    n_test: int = 2,
+    embargo_frac: float = 0.02,
+    k: int = 8,
+    seed: int = 0,
+) -> Search:
+    """Sweep width and bandwidth as well as shrinkage, and score the *whole* sweep.
+
+    The first round swept only λ and read a PBO of 0.00 over it. That was a weak
+    test: nine shrinkage values yield nine nearly identical models, so the
+    in-sample winner is almost bound to rank well out of sample. Bandwidth γ was
+    never swept at all, and it decides whether the random features are nearly
+    linear or nearly noise. This sweeps both and computes PBO across every
+    (width, γ, λ) configuration, which is the question PBO exists to answer:
+    does picking the best of *these* generalise?
+    """
+    splits = cpcv_splits(data.events, n_groups=n_groups, n_test=n_test, embargo_frac=embargo_frac)
+    if not splits:
+        raise ValueError("not enough events to cross-validate")
+    x, y = data.matrix, data.target.to_numpy(dtype=float)
+    dates = pd.DatetimeIndex(data.events["ts"]).to_numpy()
+    w = data.weights.to_numpy(dtype=float)
+
+    grid: list[Selection] = []
+    paths: dict[tuple, list[np.ndarray]] = {}
+    for width in widths:
+        for gamma in gammas:
+            per_lambda: dict[float, list[float]] = {float(v): [] for v in lambdas}
+            for split in splits:
+                models = rff.fit(
+                    x[split.train], y[split.train], data.columns, width, gamma, lambdas, w[split.train], seed
+                )
+                for lam, model in models.items():
+                    predicted = model.predict(x[split.test])
+                    per_lambda[lam].append(long_short_spread(predicted, y[split.test], dates[split.test], k))
+                    paths.setdefault((width, gamma, lam), []).append(predicted * np.sign(y[split.test]))
+            means = {lam: float(np.nanmean(v)) for lam, v in per_lambda.items()}
+            best_lam = max(means, key=lambda lam: means[lam] if np.isfinite(means[lam]) else -np.inf)
+            grid.append(
+                Selection(
+                    lam=float(best_lam),
+                    n_features=int(width),
+                    gamma=float(gamma),
+                    score=means[best_lam],
+                    by_lambda=means,
+                    pbo={},
+                    leakage=leakage_report(data.events, splits),
+                    n_splits=len(splits),
+                )
+            )
+    keys = sorted(paths)
+    width_ = min(len(np.concatenate(paths[key])) for key in keys)
+    matrix = np.column_stack([np.concatenate(paths[key])[:width_] for key in keys])
+    pbo = pbo_cscv(matrix) if matrix.shape[1] >= 2 else {"pbo": 1.0, "n_configs": matrix.shape[1]}
+    pbo.pop("logits", None)
+    best = max(grid, key=lambda s: s.score if np.isfinite(s.score) else -np.inf)
+    best.pbo = pbo
+    return Search(best=best, grid=grid, pbo=pbo)

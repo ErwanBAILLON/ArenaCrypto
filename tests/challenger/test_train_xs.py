@@ -134,3 +134,23 @@ class TestTrain:
         assert metrics["cv_splits"] == 10
         assert metrics["max_overlap_ns"] == 0
         assert "pbo" in metrics and "cv_by_lambda" in metrics
+
+
+class TestSearch:
+    def test_it_sweeps_width_and_bandwidth_not_just_shrinkage(self, dataset):
+        out = train_xs.search(dataset, widths=(200, 400), gammas=(0.01, 0.05), n_groups=5, n_test=2, k=3)
+        assert len(out.grid) == 4
+        assert {(s.n_features, s.gamma) for s in out.grid} == {(200, 0.01), (200, 0.05), (400, 0.01), (400, 0.05)}
+
+    def test_pbo_is_over_the_whole_grid(self, dataset):
+        """Nine lambdas are nine near-identical models; the grid is the real test."""
+        out = train_xs.search(dataset, widths=(200, 400), gammas=(0.01, 0.05), n_groups=5, n_test=2, k=3)
+        assert out.pbo["n_configs"] == 4 * len(train_xs.rff.DEFAULT_LAMBDAS)
+        assert 0.0 <= out.pbo["pbo"] <= 1.0
+        assert out.best.pbo is out.pbo
+
+    def test_the_table_ranks_configurations(self, dataset):
+        out = train_xs.search(dataset, widths=(200,), gammas=(0.01, 0.05), n_groups=5, n_test=2, k=3)
+        table = out.table
+        assert list(table.columns) == ["n_features", "gamma", "lam", "cv_spread"]
+        assert table["cv_spread"].is_monotonic_decreasing
