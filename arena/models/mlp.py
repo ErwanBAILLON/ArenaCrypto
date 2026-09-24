@@ -89,7 +89,9 @@ def _train_one(
         pred = net_.forward(xx)
         return float(np.mean(ww * (pred - yy) ** 2))
 
-    for epoch in range(epochs):
+    ran = 0
+    for _ in range(epochs):
+        ran += 1
         order = rng.permutation(n)
         for start in range(0, n, batch):
             idx = order[start : start + batch]
@@ -135,7 +137,7 @@ def _train_one(
             bad += 1
             if bad >= patience:
                 break
-    return best_state or net, {"val_loss": best, "epochs": epoch + 1}
+    return best_state or net, {"val_loss": best, "epochs": ran}
 
 
 @dataclass(frozen=True)
