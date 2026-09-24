@@ -228,3 +228,89 @@ class TestXsComplex:
         for key in ("k", "max_weight", "target_vol", "min_symbols", "stop", "roi_steps"):
             assert XsComplex.default_params[key] == XsSparse.default_params[key]
         assert XsComplex.rebalance_weekday == XsSparse.rebalance_weekday
+
+
+# --------------------------------------------------------------------------- hedge modes, vol, cadence
+
+
+class TestHedgeModes:
+    SCORES = pd.Series({f"S{i}": float(i) for i in range(12)} | {"BTCUSDT": 5.5, "ETHUSDT": 5.4})
+
+    def test_index_hedge_shorts_everyone_else_a_little(self):
+        w = neutral_book(self.SCORES, k=3, max_weight=0.2, hedge="index")
+        longs = {s for s, x in w.items() if x > 0}
+        shorts = {s for s, x in w.items() if x < 0}
+        assert len(longs) == 3 and len(shorts) == len(self.SCORES) - 3
+        assert sum(w.values()) == pytest.approx(0.0, abs=1e-12)
+
+    def test_anchor_hedge_shorts_only_the_anchors(self):
+        w = neutral_book(self.SCORES, k=3, max_weight=0.2, hedge="anchor", hedge_symbols=["BTCUSDT", "ETHUSDT"])
+        assert {s for s, x in w.items() if x < 0} == {"BTCUSDT", "ETHUSDT"}
+        assert sum(w.values()) == pytest.approx(0.0, abs=1e-12)
+
+    def test_an_anchor_that_is_also_a_pick_is_not_shorted_against_itself(self):
+        scores = pd.Series({"BTCUSDT": 9.0, "A": 1.0, "B": 2.0, "ETHUSDT": 0.5})
+        w = neutral_book(scores, k=1, max_weight=0.5, hedge="anchor", hedge_symbols=["BTCUSDT", "ETHUSDT"])
+        assert w["BTCUSDT"] > 0 and w["ETHUSDT"] < 0
+
+    def test_an_unknown_mode_is_refused(self):
+        with pytest.raises(ValueError):
+            neutral_book(self.SCORES, k=2, max_weight=0.2, hedge="magic")
+
+
+class TestPortfolioVol:
+    def test_a_neutral_book_of_correlated_names_has_far_less_vol_than_its_names(self):
+        from arena.competitors.ladder import portfolio_vol
+
+        rng = np.random.default_rng(0)
+        market = rng.normal(0, 0.01, 500)
+        rets = pd.DataFrame({f"S{i}": market + rng.normal(0, 0.002, 500) for i in range(6)})
+        weights = {"S0": 0.5, "S1": 0.5, "S2": -0.5, "S3": -0.5}
+        book = portfolio_vol(weights, rets, 8760)
+        single = float(rets["S0"].std() * np.sqrt(8760))
+        assert book < 0.3 * single
+
+    def test_portfolio_mode_levers_up_where_names_mode_does_not(self, history):
+        """Sizing on the names' average vol left the book at a ninth of its risk budget."""
+        snap = _snap(history)
+        names = XsSparse({"vol_mode": "names", "max_leverage": 3.0}).decide(snap)
+        port = XsSparse({"vol_mode": "portfolio", "max_leverage": 3.0}).decide(snap)
+        assert sum(abs(t.weight) for t in port.values()) > sum(abs(t.weight) for t in names.values())
+
+    def test_max_gross_caps_whatever_the_target_asks_for(self, history):
+        d = XsSparse({"vol_mode": "portfolio", "max_leverage": 5.0, "max_gross": 0.3}).decide(_snap(history))
+        assert sum(abs(t.weight) for t in d.values()) <= 0.3 + 1e-9
+
+
+class TestCadence:
+    def test_a_slower_cadence_reselects_less_often(self, history):
+        """The ladder churns both books every day; what the cadence governs is re-selection."""
+        candles, funding = history
+        stamps = sorted(candles["ts"].unique())
+        start = 24 * 120
+        fast, slow = XsSparse({"rebalance_every_weeks": 1}), XsSparse({"rebalance_every_weeks": 4})
+        seen = {"fast": set(), "slow": set()}
+        for ts in stamps[start : start + 24 * 7 * 9]:
+            snap = Snapshot.from_long(ts, SYMS, candles[candles["ts"] <= ts], funding[funding["ts"] <= ts])
+            for name, comp in (("fast", fast), ("slow", slow)):
+                comp.decide(snap)
+                if comp.state()["last_rebalance"]:
+                    seen[name].add(comp.state()["last_rebalance"])
+        assert len(seen["fast"]) >= 8
+        assert 2 <= len(seen["slow"]) <= 3
+
+    def test_cadence_survives_a_state_round_trip(self, history):
+        comp = XsSparse({"rebalance_every_weeks": 4})
+        comp.decide(_snap(history))
+        clone = XsSparse({"rebalance_every_weeks": 4})
+        clone.restore_state(comp.state())
+        assert clone.state()["last_rebalance"] == comp.state()["last_rebalance"]
+
+
+class TestTwoSignalPreset:
+    def test_it_is_a_named_preset_not_the_default(self, history):
+        from arena.competitors.xs_sparse import DEFAULT_SIGNALS, TWO_SIGNALS
+
+        assert set(TWO_SIGNALS) == {"rank_vol_30d", "rank_donchian_position"}
+        assert XsSparse()._signals() == DEFAULT_SIGNALS
+        assert XsSparse({"signals": TWO_SIGNALS}).decide(_snap(history))

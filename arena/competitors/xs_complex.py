@@ -20,18 +20,15 @@ because a silent fallback is a different model wearing this one's name.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from arena.competitors.base import register
-from arena.competitors.ladder import LadderHoldingCompetitor, neutral_book
+from arena.competitors.ladder import LadderHoldingCompetitor
 from arena.core.snapshot import Snapshot
-from arena.core.types import Decision, Target
+from arena.core.types import Decision
 from arena.features import build as build_panel
 from arena.features import feature_columns
 from arena.models.rff import RffRidge
-
-VOL_FLOOR = 0.05
 
 
 @register
@@ -47,6 +44,11 @@ class XsComplex(LadderHoldingCompetitor):
         "min_abs_score": 0.0,  # ignore predictions too small to pay for a trade
         "stop": 0.08,
         "roi_steps": None,
+        "hedge": "picks",
+        "vol_mode": "names",
+        "max_gross": 1.0,
+        "max_leverage": 1.0,
+        "rebalance_every_weeks": 1,
         "model_str": None,  # the RffRidge artefact, injected by the tick from `models`
     }
 
@@ -79,7 +81,7 @@ class XsComplex(LadderHoldingCompetitor):
         raw = pd.Series(self._model.predict_frame(panel), index=panel.index, dtype=float)
         return (raw - raw.mean()).dropna()
 
-    def compute(self, snap: Snapshot) -> Decision:
+    def select(self, snap: Snapshot) -> Decision:
         if self._model is None:
             return {}
         panel = build_panel(snap)
@@ -91,29 +93,14 @@ class XsComplex(LadderHoldingCompetitor):
             scores = scores[scores.abs() >= threshold]
         if scores.empty:
             return {}
-        weights = neutral_book(scores, int(self.params["k"]), float(self.params["max_weight"]))
-        if not weights:
-            return {}
-
-        vols = panel.get("vol_30d")
-        scale = 1.0
-        if vols is not None:
-            held = [s for s in weights if s in vols.index]
-            mean_vol = float(np.nanmean([max(float(vols[s]), VOL_FLOOR) for s in held])) if held else float("nan")
-            if np.isfinite(mean_vol) and mean_vol > 0:
-                scale = min(1.0, float(self.params["target_vol"]) / mean_vol)
-
-        span = float(scores.abs().max()) or 1.0
-        out: Decision = {}
-        for sym, weight in weights.items():
-            out[sym] = Target(
-                weight=weight * scale,
-                conviction=float(np.clip(abs(scores[sym]) / span, 0.0, 1.0)),
-                reason={
-                    "predicted": round(float(scores[sym]), 5),
-                    "lambda": self._model.lam,
-                    "features": self._model.features.n_features,
-                    "vol_scale": round(scale, 3),
-                },
-            )
-        return out
+        model = self._model
+        return self.size_book(
+            snap,
+            panel,
+            scores,
+            lambda sym: {
+                "predicted": round(float(scores[sym]), 5),
+                "lambda": model.lam,
+                "features": model.features.n_features,
+            },
+        )

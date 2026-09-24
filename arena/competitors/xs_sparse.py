@@ -33,16 +33,22 @@ mechanism Nagel says does the work.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from arena.competitors.base import register
-from arena.competitors.ladder import LadderHoldingCompetitor, neutral_book
+from arena.competitors.ladder import LadderHoldingCompetitor
 from arena.core.snapshot import Snapshot
-from arena.core.types import Decision, Target
+from arena.core.types import Decision
 from arena.features import build as build_panel
 
 # column -> sign. Negative means "a high rank predicts underperformance".
+# Pre-registered on 2026-09-24 after the five-signal rule's per-signal ICs were read:
+# low volatility carried the result (t = 5.2 out of sample) and three of the other
+# four were negative. Kept as a *named preset*, not as the new default, because
+# selecting it on the same held-out year it was read from would be fitting to the
+# test set. Its verdict belongs to data that did not exist when this was written.
+TWO_SIGNALS: dict[str, float] = {"rank_vol_30d": -1.0, "rank_donchian_position": 1.0}
+
 DEFAULT_SIGNALS: dict[str, float] = {
     "rank_ret_30d_skip_7d": 1.0,
     "rank_ret_7d": -1.0,
@@ -50,7 +56,6 @@ DEFAULT_SIGNALS: dict[str, float] = {
     "rank_vol_30d": -1.0,
     "rank_donchian_position": 1.0,
 }
-VOL_FLOOR = 0.05
 
 
 @register
@@ -66,6 +71,11 @@ class XsSparse(LadderHoldingCompetitor):
         "signals": None,  # None -> DEFAULT_SIGNALS
         "stop": 0.08,
         "roi_steps": None,  # None -> the module's default ladder
+        "hedge": "picks",  # picks | index | anchor
+        "vol_mode": "names",  # names | portfolio
+        "max_gross": 1.0,
+        "max_leverage": 1.0,
+        "rebalance_every_weeks": 1,
     }
 
     def warmup_bars(self) -> int:
@@ -85,31 +95,11 @@ class XsSparse(LadderHoldingCompetitor):
         signed = centred.mul(pd.Series({c: signals[c] for c in present}), axis=1)
         return signed.mean(axis=1, skipna=True).dropna()
 
-    def compute(self, snap: Snapshot) -> Decision:
+    def select(self, snap: Snapshot) -> Decision:
         panel = build_panel(snap)
         if len(panel) < int(self.params["min_symbols"]):
             return {}
         scores = self.score(panel)
         if scores.empty:
             return {}
-        weights = neutral_book(scores, int(self.params["k"]), float(self.params["max_weight"]))
-        if not weights:
-            return {}
-
-        vols = panel.get("vol_30d")
-        scale = 1.0
-        if vols is not None:
-            held = [s for s in weights if s in vols.index]
-            gross_vol = float(np.nanmean([max(float(vols[s]), VOL_FLOOR) for s in held])) if held else float("nan")
-            if np.isfinite(gross_vol) and gross_vol > 0:
-                scale = min(1.0, float(self.params["target_vol"]) / gross_vol)
-
-        span = float(scores.max() - scores.min()) or 1.0
-        out: Decision = {}
-        for sym, weight in weights.items():
-            out[sym] = Target(
-                weight=weight * scale,
-                conviction=float(np.clip(abs(scores[sym]) / span * 2.0, 0.0, 1.0)),
-                reason={"score": round(float(scores[sym]), 4), "vol_scale": round(scale, 3)},
-            )
-        return out
+        return self.size_book(snap, panel, scores, lambda sym: {"score": round(float(scores[sym]), 4)})
