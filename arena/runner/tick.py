@@ -306,6 +306,11 @@ def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now, universe: Uni
             cand = _candidate(conn, ch, ts)
             if cand is None:
                 continue
+            gone, why = promotion.should_retire(cand, now, ppy)
+            if gone:
+                registry.set_status(conn, ch.id, "retired")
+                bstore.add_alert(conn, promotion.retirement_alert(ch, why))
+                continue
             ok, evidence = promotion.should_promote(cand, champ_cand, null_rets, now, ppy)
             if ok:
                 if champion is not None:
@@ -320,6 +325,13 @@ def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now, universe: Uni
                 champion, champ_cand = ch, cand
         for s in promotion.surplus_challengers(groups["challenger"]):
             registry.set_status(conn, s.id, "retired")
+        # a champion that lost its edge leaves too, even with nobody to take its place:
+        # a family with no champion is an honest state, a losing champion is not
+        if champion is not None and champ_cand is not None:
+            gone, why = promotion.should_retire(champ_cand, now, ppy)
+            if gone:
+                registry.set_status(conn, champion.id, "retired")
+                bstore.add_alert(conn, promotion.retirement_alert(champion, why))
     for s in specs:
         if s.role != "competitor":
             continue

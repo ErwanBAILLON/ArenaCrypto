@@ -72,6 +72,7 @@ class BenchCarryEqual(Competitor):
     """Equal-weight carry on every symbol that has funding data."""
 
     family = "bench_carry_equal"
+    markets = frozenset({"crypto"})  # needs perpetual funding or a crypto lexicon
 
     def decide(self, snap: Snapshot) -> Decision:
         syms = [s for s in snap.symbols if not snap.funding(s).empty]

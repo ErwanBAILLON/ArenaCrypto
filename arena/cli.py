@@ -59,10 +59,31 @@ WIDE_FOUNDERS: list[tuple[str, str, dict]] = [
 ]
 
 
+# Currencies: two rules for one premium (trend), the second a control on the first (see competitors/fx.py).
+FX_FOUNDERS: list[tuple[str, str, dict]] = [
+    ("fx_tsmom", "fx_tsmom_v1", {}),
+    ("fx_breakout", "fx_breakout_v1", {}),
+]
+
+
 def founders_for(universe) -> list[tuple[str, str, dict]]:
+    """The founders a universe seeds: only families that declare its market."""
     if universe.membership.enabled:
-        return list(WIDE_FOUNDERS)
-    return [f for f in FOUNDERS if universe.exchange == "binance" or f[0] not in FUNDING_FAMILIES]
+        pool = list(WIDE_FOUNDERS)
+    elif universe.market == "fx":
+        pool = list(FX_FOUNDERS)
+    else:
+        pool = list(FOUNDERS)
+    return [f for f in pool if universe.market in REGISTRY[f[0]].markets]
+
+
+def misfits(conn, universe) -> list[CompetitorSpec]:
+    """Active competitors running in a universe their family was not built for."""
+    return [
+        s
+        for s in registry.list_competitors(conn, statuses=["champion", "challenger"], universe=universe.name)
+        if s.role == "competitor" and s.family in REGISTRY and universe.market not in REGISTRY[s.family].markets
+    ]
 
 
 def nulls_for(universe) -> list[CompetitorSpec]:
@@ -162,6 +183,35 @@ def tick(no_ingest: bool = typer.Option(False, help="Skip market ingestion (repl
         f"tick {rep.ts}: booked={len(rep.booked)} skipped={len(rep.skipped)} failed={rep.failed} "
         f"ingested={rep.ingested} alerts_sent={sent}"
     )
+
+
+@app.command()
+def prune(apply: bool = typer.Option(False, help="Retire them (default: list only)")) -> None:
+    """Retire competitors running in a universe their family does not fit (books kept).
+
+    Every family declares the markets it was built for; the founders of a
+    universe are filtered on it, but the arena predates that rule and carried
+    perp-born rules on ETFs. This is the sweep: list, then ``--apply``.
+    """
+    settings, conn, universe = _ctx()
+    gone = misfits(conn, universe)
+    for s in gone:
+        fits = sorted(REGISTRY[s.family].markets)
+        typer.echo(f"{s.name}: family {s.family} is built for {fits}, universe is {universe.market}")
+        if apply:
+            registry.set_status(conn, s.id, "retired")
+            bstore.add_alert(
+                conn,
+                Alert(
+                    kind="retired",
+                    competitor_id=s.id,
+                    payload={
+                        "detail": f"{s.name} retired: family {s.family} is not built for the {universe.market} market"
+                    },
+                ),
+            )
+    conn.commit()
+    typer.echo(f"{len(gone)} misfit(s){' retired' if apply else ''}")
 
 
 @app.command()

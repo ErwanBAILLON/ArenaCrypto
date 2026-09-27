@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from arena.core.types import CompetitorSpec
-from arena.runner import drift
+from arena.runner import drift, promotion
 from arena.runner.promotion import (
     MIN_NULL_SAMPLES,
     Candidate,
@@ -196,3 +196,33 @@ class TestStaleFeeds:
     def test_the_failure_detail_travels_with_the_alert(self):
         alerts = drift.stale_feeds([self._row("candles", 10, ok=False, detail="15/15 symbols failed")], NOW)
         assert "15/15 symbols failed" in alerts[0].payload["detail"]
+
+
+class TestRetirement:
+    def _cand(self, rets, days=60):
+        idx = pd.date_range(START, periods=len(rets), freq="1h", tz="UTC")
+        spec = CompetitorSpec(7, "x_v1", "trend_ts", 1, {}, status="challenger")
+        return promotion.Candidate(spec=spec, first_ts=START, decisions=200, returns=pd.Series(rets, index=idx))
+
+    def test_not_before_maturity(self):
+        rng = np.random.default_rng(0)
+        c = self._cand(rng.normal(-0.001, 0.005, 24 * 10))
+        c = promotion.Candidate(spec=c.spec, first_ts=c.first_ts, decisions=10, returns=c.returns)
+        assert promotion.should_retire(c, START + timedelta(days=10))[1]["reason"] == "not_ready"
+
+    def test_a_mature_loser_leaves_and_a_coin_flip_stays(self):
+        rng = np.random.default_rng(1)
+        loser = self._cand(rng.normal(-0.0004, 0.004, 24 * 60))
+        gone, why = promotion.should_retire(loser, START + timedelta(days=60))
+        assert gone and why["reason"] in ("below_zero", "drawdown")
+        flat = self._cand(rng.normal(0.0, 0.001, 24 * 60))
+        gone, why = promotion.should_retire(flat, START + timedelta(days=60))
+        assert not gone and why["reason"] == "holds"
+
+    def test_a_deep_drawdown_is_enough_on_its_own(self):
+        rets = np.concatenate([np.full(24 * 20, 0.002), np.full(24 * 10, -0.0015), np.full(24 * 30, 0.0)])
+        c = self._cand(rets)
+        gone, why = promotion.should_retire(c, START + timedelta(days=60))
+        assert gone and why["reason"] == "drawdown" and why["max_drawdown"] >= 0.25
+        alert = promotion.retirement_alert(c.spec, why)
+        assert alert.kind == "retired" and "drawdown" in alert.payload["detail"]

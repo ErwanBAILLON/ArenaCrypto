@@ -30,6 +30,7 @@ _EVENT_EMOJI = {
     "error": "❗",
     "drift": "📉",
     "live_exit": "⚡",
+    "retired": "🪦",
     "info": "ℹ️",
 }
 _EVENT_LABEL = {
@@ -39,6 +40,7 @@ _EVENT_LABEL = {
     "error": "Erreur",
     "drift": "Dérive",
     "live_exit": "Sortie en direct",
+    "retired": "Retiré de l'arène",
 }
 _CRITERIA_FR = {
     "folds_positive": "gagner dans deux périodes de test sur trois",

@@ -12,6 +12,13 @@
   (dict "name" "classic-challenger" "args" (list "challenger") "schedule" .Values.classic.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false "universe" $u)
 ) }}
 {{- end }}
+{{- if .Values.fx.enabled }}
+{{- $f := .Values.fx.universePath }}
+{{- $jobs = concat $jobs (list
+  (dict "name" "fx-tick"       "args" (list "tick")       "schedule" .Values.fx.schedules.tick       "resources" .Values.resources.tick  "deadline" 3300  "tz" false "universe" $f)
+  (dict "name" "fx-challenger" "args" (list "challenger") "schedule" .Values.fx.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false "universe" $f)
+) }}
+{{- end }}
 {{- if .Values.wide.enabled }}
 {{- $w := .Values.wide.universePath }}
 {{- $jobs = concat $jobs (list

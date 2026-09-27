@@ -42,7 +42,7 @@ jobs:
           uv sync --frozen --extra dev --extra web
           uv run ruff check arena tests
           uv run ruff format --check arena tests
-          uv run pytest -q
+          uv run pytest -q -n 4  # the runner has four cores; the suite is CPU-bound
 
       - name: Install Docker CLI
         run: |

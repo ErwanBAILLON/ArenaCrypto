@@ -197,7 +197,7 @@ def duration_fr(delta: timedelta) -> str:
     return f"{max(1, secs // 60)} min"
 
 
-UNIVERSE_FR = {"crypto": "Crypto", "classic": "Marchés classiques"}
+UNIVERSE_FR = {"crypto": "Crypto", "classic": "Marchés classiques", "wide": "Crypto large (top 50)", "fx": "Devises"}
 
 
 def universe_fr(name: str | None) -> str:

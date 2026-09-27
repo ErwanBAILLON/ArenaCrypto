@@ -25,6 +25,7 @@ DENSITY_FULL = 10  # articles per 7 days that count as full size
 @register
 class News(Competitor):
     family = "news"
+    markets = frozenset({"crypto"})  # needs perpetual funding or a crypto lexicon
     default_params = {"min_sent_7d": 0.10, "k": 3, "max_weight": 0.30, "min_n_7d": 3}
 
     def warmup_bars(self) -> int:

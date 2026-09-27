@@ -46,6 +46,7 @@ CONVICTION_Z = 2.0  # |z| that counts as full conviction
 @register
 class FundingSkew(HoldingCompetitor):
     family = "funding_skew"
+    markets = frozenset({"crypto"})  # needs perpetual funding or a crypto lexicon
     rebalance_weekday = 0  # Mondays: funding ranks swap daily and each swap pays two legs of fees
 
     default_params = {

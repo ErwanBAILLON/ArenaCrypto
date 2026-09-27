@@ -14,10 +14,16 @@ from typing import Any, ClassVar
 from arena.core.snapshot import Snapshot
 from arena.core.types import CompetitorSpec, Decision
 
+ALL_MARKETS: frozenset[str] = frozenset({"crypto", "classic", "fx"})
+
 
 class Competitor(ABC):
     family: ClassVar[str]
     default_params: ClassVar[dict[str, Any]] = {}
+    # the markets this family is built for; a universe seeds only fitting families and
+    # `arena prune` retires the rest. A funding rule on ETFs or a perp-sized trend rule on
+    # currencies is not a model, it is a bug with a leaderboard entry.
+    markets: ClassVar[frozenset[str]] = ALL_MARKETS
 
     def __init__(self, params: dict[str, Any] | None = None, seed: int = 0, bar_hours: int = 1):
         self.params: dict[str, Any] = {**self.default_params, **(params or {})}

@@ -77,12 +77,24 @@ def snapshot(candles) -> Snapshot:
     return Snapshot.from_long(ts, SYMBOLS, candles, make_funding(candles=candles))
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def pg_url() -> str:
+    """The test database, one per xdist worker: the ``conn`` fixture drops the schema, so workers cannot share one."""
     url = os.environ.get("PG_TEST_URL")
     if not url:
         pytest.skip("PG_TEST_URL not set")
-    return url
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return url
+    import psycopg
+
+    base, _, dbname = url.rpartition("/")
+    per_worker = f"{dbname}_{worker}"
+    with psycopg.connect(f"{base}/postgres", autocommit=True) as admin:
+        exists = admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (per_worker,)).fetchone()
+        if not exists:
+            admin.execute(f'CREATE DATABASE "{per_worker}"')
+    return f"{base}/{per_worker}"
 
 
 @pytest.fixture

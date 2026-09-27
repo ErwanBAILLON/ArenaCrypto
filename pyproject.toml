@@ -50,3 +50,8 @@ select = ["E", "F", "I", "B", "UP", "W"]
 "tests/**" = ["B011", "E501"]
 "arena/web/**" = ["B008"]
 "arena/explain/**" = ["E501"]  # French prose, long strings are the content  # FastAPI Depends() in defaults is the framework idiom
+
+[dependency-groups]
+dev = [
+    "pytest-xdist>=3.6",
+]

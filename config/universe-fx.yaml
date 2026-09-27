@@ -1,0 +1,28 @@
+# Currencies, on daily Yahoo Finance bars. Its own arena: a currency moves 7-10 % a
+# year against 60-90 % for a perp, mean-reverts at long horizons and trends at
+# medium ones, so a rule sized for crypto is asleep or ten times levered here.
+# Only families declaring `markets = {"fx"}` are seeded; nothing built for
+# perps is allowed to run on it (see `arena prune`).
+name: fx
+market: fx
+exchange: yahoo
+bar: 1d
+symbols:
+  - EURUSD=X
+  - GBPUSD=X
+  - USDJPY=X
+  - AUDUSD=X
+  - USDCAD=X
+  - USDCHF=X
+  - NZDUSD=X
+  - EURGBP=X
+  - EURJPY=X
+  - EURCHF=X
+binance_suffix: ""
+nav0: 10000.0
+history_start: "2021-01-01T00:00:00Z"
+# Spot FX at a retail broker on majors: about a basis point of spread, one of slippage.
+fees:
+  perp_taker: 0.0001
+  slippage: 0.0001
+  spot_taker: 0.0001

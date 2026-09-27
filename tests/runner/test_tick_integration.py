@@ -70,3 +70,32 @@ def test_second_bar_marks_pnl_and_allocates(seeded):
     funding = cstore.read_funding(conn, "binance", ["BTC"], first_bar + timedelta(seconds=1), last)["rate"].sum()
     expected = btc.iloc[-1] / btc.iloc[0] - 1 - funding  # long pays funding
     assert rets[hold.id].iloc[-1] == pytest.approx(expected, abs=1e-9)
+
+
+def test_founders_follow_the_market_of_the_universe(tmp_path):
+    from arena import cli
+
+    fx = tmp_path / "fx.yaml"
+    fx.write_text("name: fx\nmarket: fx\nexchange: yahoo\nbar: 1d\nsymbols: [EURUSD=X]\nbinance_suffix: ''\n")
+    classic = tmp_path / "classic.yaml"
+    classic.write_text("name: classic\nexchange: yahoo\nbar: 1d\nsymbols: [SPY]\nbinance_suffix: ''\n")
+    assert {f[0] for f in cli.founders_for(load_universe(fx))} == {"fx_tsmom", "fx_breakout"}
+    classic_fams = {f[0] for f in cli.founders_for(load_universe(classic))}
+    assert "carry" not in classic_fams and "trend_ts" in classic_fams and "fx_tsmom" not in classic_fams
+    assert load_universe(classic).market == "classic"
+
+
+def test_prune_lists_perp_rules_running_on_currencies(conn, tmp_path):
+    from arena import cli
+
+    fx = tmp_path / "fx.yaml"
+    fx.write_text("name: fx\nmarket: fx\nexchange: yahoo\nbar: 1d\nsymbols: [EURUSD=X]\nbinance_suffix: ''\n")
+    uni = load_universe(fx)
+    registry.insert_competitor(
+        conn, CompetitorSpec(None, "carry_v1_fx", "carry", 1, {}, status="challenger", universe="fx")
+    )
+    registry.insert_competitor(
+        conn, CompetitorSpec(None, "fx_tsmom_v1", "fx_tsmom", 1, {}, status="champion", universe="fx")
+    )
+    conn.commit()
+    assert [s.name for s in cli.misfits(conn, uni)] == ["carry_v1_fx"]

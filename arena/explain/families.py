@@ -199,6 +199,27 @@ CARDS: dict[str, FamilyCard] = {
             "Le backtest ne voit pas les mèches intra-barre : un stop touché puis repris dans la même barre n'est pas détecté.",
         ],
     ),
+    "fx_tsmom": FamilyCard(
+        "fx_tsmom",
+        "Devises : momentum multi-horizon",
+        "Sur chaque paire, le signe du rendement à 1, 3 et 12 mois vote ; la paire n'est traitée que si les votes s'accordent, "
+        "achetée si elle monte, vendue si elle baisse, dimensionnée pour 10 % de volatilité annuelle. Les devises trendent à "
+        "moyen terme parce que les banques centrales bougent par petits pas et que les flux de couverture suivent (Moskowitz, "
+        "Ooi, Pedersen 2012 ; Menkhoff et al. 2012).",
+        ["Cours quotidiens Yahoo Finance", "Rendements 21, 63 et 252 jours", "Volatilité réalisée 60 jours"],
+        "Une fois par semaine, le lundi, tient entre-temps",
+        ["Perd quand les banques centrales pivotent : le retournement est payé avant que les votes changent."],
+    ),
+    "fx_breakout": FamilyCard(
+        "fx_breakout",
+        "Devises : cassure de canal",
+        "La règle des « turtles » : achète une clôture au-dessus du plus haut de 55 jours, vend une clôture sous le plus bas, "
+        "sort quand la clôture retraverse le canal de 20 jours dans l'autre sens. C'est la même prime de tendance que le "
+        "momentum, achetée avec une autre entrée : deux règles pour une prime disent si c'est la prime ou la règle qui travaille.",
+        ["Cours quotidiens Yahoo Finance", "Plus hauts et plus bas 55 et 20 jours", "Volatilité réalisée 60 jours"],
+        "Une fois par jour, tient entre-temps",
+        ["Faux départs fréquents en marché sans direction ; chaque cassure ratée coûte un aller-retour."],
+    ),
     "null_cash": FamilyCard(
         "null_cash",
         "Repère : ne rien faire",

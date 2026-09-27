@@ -1,8 +1,9 @@
 # Classic markets, daily bars from Yahoo Finance (public, no key). Tickers are
-# ETFs and FX pairs a retail investor can actually hold; indices themselves are
-# not tradable so their ETF proxies are used.
+# ETFs a retail investor can actually hold; indices themselves are not tradable
+# so their ETF proxies are used. Currencies have their own arena (universe-fx.yaml).
 name: classic
 exchange: yahoo
+market: classic
 bar: 1d
 symbols:
   - SPY        # S&P 500
@@ -15,8 +16,6 @@ symbols:
   - SLV        # Silver
   - USO        # Oil (WTI)
   - TLT        # US 20y Treasuries
-  - EURUSD=X   # Euro / dollar
-  - GBPUSD=X   # Pound / dollar
 binance_suffix: ""
 fees:
   perp_taker: 0.0005   # broker commission + spread, per side

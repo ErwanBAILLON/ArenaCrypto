@@ -43,6 +43,7 @@ CONVICTION_SCALE = 0.20
 @register
 class CrowdedTrend(HoldingCompetitor):
     family = "crowded_trend"
+    markets = frozenset({"crypto"})  # needs perpetual funding or a crypto lexicon
 
     default_params = {
         "fast": 50,

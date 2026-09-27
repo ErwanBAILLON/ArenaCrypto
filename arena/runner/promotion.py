@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 from arena.core.types import Alert, CompetitorSpec
-from arena.judge.metrics import PPY_HOURLY, probabilistic_sharpe, sharpe, track_record_verdict
+from arena.judge.metrics import PPY_HOURLY, max_drawdown, probabilistic_sharpe, sharpe, track_record_verdict
 
 MIN_DAYS = 42
 MIN_DECISIONS = 100
@@ -38,6 +38,8 @@ NULL_Q = 0.95
 MIN_NULL_SAMPLES = 20
 MIN_NULL_COVERAGE = 0.8
 PROMOTION_CONFIDENCE = 0.95
+RETIRE_CONFIDENCE = 0.10  # P(true Sharpe > 0) below this, once mature, and the model leaves
+RETIRE_MAX_DRAWDOWN = 0.25  # a quarter of the book lost from a peak is a verdict on its own
 FORWARD_ONLY_FAMILIES = frozenset({"news"})
 
 
@@ -127,6 +129,47 @@ def should_promote(
         if psr_vs_champ < PROMOTION_CONFIDENCE:
             return False, {**evidence, "reason": "below_champion"}
     return True, evidence
+
+
+def should_retire(c: Candidate, now: datetime, ppy: int = PPY_HOURLY) -> tuple[bool, dict]:
+    """Return (retire?, evidence): the symmetric question to promotion, asked of every mature competitor.
+
+    Promotion asks whether a model is 95 % surely better than chance; nothing
+    asked whether it was surely worse, so a losing challenger sat in the arena
+    until its family's budget pushed it out. Once mature (same bar as
+    promotion) a model whose track record says P(true Sharpe > 0) < 10 %, or
+    that has lost a quarter of its book from a peak, is retired -- books kept,
+    nothing deleted, the family free for the next idea.
+    """
+    if not ready(c, now):
+        return False, {"reason": "not_ready"}
+    r = c.returns[c.returns.index >= pd.Timestamp(c.first_ts)].dropna()
+    if len(r) < 24:
+        return False, {"reason": "too_short"}
+    record = track_record_verdict(r, 0.0, PROMOTION_CONFIDENCE, ppy)
+    dd = max_drawdown(r)
+    evidence = {"sharpe": sharpe(r, ppy), "psr_vs_zero": record["psr"], "max_drawdown": dd, "bars": int(len(r))}
+    if dd >= RETIRE_MAX_DRAWDOWN:
+        return True, {**evidence, "reason": "drawdown"}
+    if record["psr"] < RETIRE_CONFIDENCE:
+        return True, {**evidence, "reason": "below_zero"}
+    return False, {**evidence, "reason": "holds"}
+
+
+def retirement_alert(spec: CompetitorSpec, evidence: dict) -> Alert:
+    why = "drawdown" if evidence.get("reason") == "drawdown" else "no edge"
+    return Alert(
+        kind="retired",
+        competitor_id=spec.id,
+        payload={
+            "detail": (
+                f"{spec.name} retired ({why}): sharpe {evidence.get('sharpe', 0):+.2f}, "
+                f"P(sharpe>0) {evidence.get('psr_vs_zero', 0):.0%}, max drawdown {evidence.get('max_drawdown', 0):.1%}"
+                f" over {evidence.get('bars', 0)} bars"
+            ),
+            **{k: (round(v, 4) if isinstance(v, float) else v) for k, v in evidence.items()},
+        },
+    )
 
 
 def promotion_alert(challenger: CompetitorSpec, champion: CompetitorSpec | None, evidence: dict) -> Alert:

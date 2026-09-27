@@ -48,6 +48,7 @@ class Universe:
     name: str = "crypto"
     exchange: str = "binance"  # data source: "binance" (1h perps) or "yahoo" (1d classic markets)
     bar: str = "1h"  # "1h" or "1d": the decision bar of this universe
+    market: str = "crypto"  # what is traded: "crypto" | "classic" | "fx" -- families declare which they fit
     membership: Membership = field(default_factory=Membership)
     impact: Impact = field(default_factory=Impact)
 
@@ -109,6 +110,7 @@ def load_universe(path: str | Path | None = None) -> Universe:
         name=str(raw.get("name", "crypto")),
         exchange=str(raw.get("exchange", "binance")),
         bar=str(raw.get("bar", "1h")),
+        market=str(raw.get("market") or ("crypto" if str(raw.get("exchange", "binance")) == "binance" else "classic")),
         membership=Membership(**{k: v for k, v in (raw.get("membership") or {}).items()}),
         impact=Impact(**{k: v for k, v in (raw.get("impact") or {}).items()}),
     )

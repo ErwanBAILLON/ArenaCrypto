@@ -43,6 +43,7 @@ def rank_funding(snap: Snapshot, lookback_days: int) -> list[tuple[str, float]]:
 @register
 class Carry(HoldingCompetitor):
     family = "carry"
+    markets = frozenset({"crypto"})  # needs perpetual funding or a crypto lexicon
     rebalance_weekday = (
         0  # weekly (Monday 00:00 UTC): funding ranks near the threshold swap daily, each swap costs both legs
     )
