@@ -255,3 +255,39 @@ The baseline's 1.52 beats every seed. Selection is doing something; the earlier
   is a verdict.
 - **Does not ship**: the two-signal preset, index and anchor hedging, monthly
   cadence. Each was a hypothesis this round and each was refuted.
+
+## Round 3 — structural variants walked forward over 21 quarters (2021-07 → 2026-09)
+
+Same protocol as round 2 (rolling quarters, $1M impact model, point-in-time
+top-50), extended back to 2021 so that the bear market is in the sample. One
+instance carried across quarters, so the adaptive rule keeps its trailing ICs.
+
+| Variant | median Sharpe | mean | worst quarter | quarters > 0 | ann. return |
+|---|---|---|---|---|---|
+| baseline xs_sparse (5 signals, picks hedge, weekly) | **−0.09** | 0.12 | −2.86 | 10/21 | +0.3 % |
+| long only, no hedge | −0.40 | −0.13 | −4.31 | 9/21 | −1.2 % |
+| long only + portfolio vol ≤ 0.6 | −0.39 | −0.17 | −4.45 | 10/21 | −2.3 % |
+| adaptive (t ≥ 2, ≤ 8 signals) | −0.33 | −0.43 | −6.92 | 9/21 | −0.5 % |
+| adaptive (t ≥ 1.5, ≤ 12 signals) | −0.40 | −0.73 | −6.88 | 7/21 | −1.3 % |
+| adaptive, 26-week lookback | 0.23 | −0.32 | −8.48 | 13/21 | −0.3 % |
+| adaptive + portfolio vol ≤ 0.6 | −0.75 | −0.69 | −7.15 | 7/21 | −3.0 % |
+
+Reading:
+
+- Nothing beats zero over five years. The round-2 result (median 1.52 over the
+  last ten quarters) was a regime, not a factor: the same rule is flat-to-
+  negative once 2021–2023 are in the sample.
+- **Long-only is refuted** both raw and vol-targeted: the short leg was not the
+  problem.
+- **Signal selection by trailing IC is refuted.** Every adaptive variant has a
+  worse mean and a far worse tail (−6.9 to −8.5) than the fixed rule. The one
+  positive median (26-week lookback, 13/21 > 0) comes with a −8.48 quarter and
+  a negative mean: it wins small and loses big, the signature of chasing what
+  just worked. Not pre-registered, not shipped.
+- Portfolio vol targeting multiplies turnover (7–11 per quarter vs 4) and
+  loses money at this cost level, whatever the signal.
+
+Decision: the wide arena keeps its two `xs_sparse` founders and nothing else
+from this round. The neural-network trial (linear control vs MLP-16/64,
+rolling retrain, purged early stopping) is the last open question; its result
+will be appended here.
