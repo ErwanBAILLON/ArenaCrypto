@@ -74,18 +74,6 @@ class Leaderboard:
         }
 
 
-@dataclass(frozen=True)
-class CompetitorDetail:
-    spec: CompetitorSpec
-    parent_name: str | None
-    first_ts: datetime | None
-    current_ts: datetime | None
-    current_targets: list[dict[str, Any]]
-    recent_targets: list[dict[str, Any]]
-    trials: list[dict[str, Any]]
-    model_metrics: dict[str, Any] | None
-
-
 def last_bar(conn: psycopg.Connection) -> datetime | None:
     """Timestamp of the most recent book row across all competitors, or None."""
     with conn.cursor() as cur:
@@ -318,54 +306,6 @@ def _trial_row(r: dict[str, Any]) -> dict[str, Any]:
         "metrics": metrics,
         "highlights": {k: metrics.get(k) for k in TRIAL_METRIC_KEYS},
     }
-
-
-def competitor_detail(conn: psycopg.Connection, competitor_id: int) -> CompetitorDetail | None:
-    """Spec, targets, family trials and latest model metrics; None when the id is unknown."""
-    spec = _competitor_by_id(conn, competitor_id)
-    if spec is None:
-        return None
-    parent = _competitor_by_id(conn, spec.parent_id) if spec.parent_id is not None else None
-    with conn.cursor() as cur:
-        cur.execute("SELECT min(ts) AS first FROM books WHERE competitor_id = %s", (competitor_id,))
-        first_ts = cur.fetchone()["first"]
-        cur.execute(
-            "SELECT ts, symbol, weight, kind, conviction, reason FROM targets"
-            " WHERE competitor_id = %s AND ts = (SELECT max(ts) FROM targets WHERE competitor_id = %s)"
-            " ORDER BY abs(weight) DESC, symbol",
-            (competitor_id, competitor_id),
-        )
-        current = [dict(r) for r in cur.fetchall()]
-        cur.execute(
-            "SELECT ts, symbol, weight, kind, conviction, reason FROM targets"
-            " WHERE competitor_id = %s ORDER BY ts DESC, symbol LIMIT 50",
-            (competitor_id,),
-        )
-        recent = [dict(r) for r in cur.fetchall()]
-        cur.execute(
-            "SELECT id, competitor_id, family, kind, verdict, started_at, finished_at, notes, metrics"
-            " FROM trials WHERE family = %s ORDER BY started_at DESC, id DESC LIMIT 50",
-            (spec.family,),
-        )
-        trials_rows = [_trial_row(r) for r in cur.fetchall()]
-        model_metrics = None
-        if spec.family == "meta_label":
-            cur.execute(
-                "SELECT metrics FROM models WHERE competitor_id = %s ORDER BY trained_at DESC, id DESC LIMIT 1",
-                (competitor_id,),
-            )
-            row = cur.fetchone()
-            model_metrics = dict(row["metrics"]) if row else None
-    return CompetitorDetail(
-        spec=spec,
-        parent_name=parent.name if parent else None,
-        first_ts=first_ts,
-        current_ts=current[0]["ts"] if current else None,
-        current_targets=current,
-        recent_targets=recent,
-        trials=trials_rows,
-        model_metrics=model_metrics,
-    )
 
 
 def alerts(conn: psycopg.Connection, limit: int = 200) -> list[dict[str, Any]]:

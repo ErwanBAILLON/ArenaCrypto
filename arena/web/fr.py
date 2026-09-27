@@ -13,7 +13,6 @@ from typing import Any
 from arena.core.types import Target
 from arena.explain.families import ROLE_FR, STATUS_FR
 from arena.explain.reasons import explain_target
-from arena.explain.verdicts import money
 
 # Alert kinds written by the runner, cli and challenger modules.
 KIND_FR: dict[str, str] = {
@@ -133,10 +132,6 @@ def euros(v: float | None) -> str:
     return f"{v:+,.0f} €".replace(",", " ")
 
 
-def euros_frac(frac: float | None) -> str:
-    return "n/a" if frac is None else money(float(frac))
-
-
 def pct_fr(v: float | None, digits: int = 1) -> str:
     return "n/a" if v is None else f"{float(v) * 100:+.{digits}f} %".replace(".", ",")
 
@@ -181,10 +176,6 @@ def alert_sentence(kind: str, family: str | None, symbol: str | None, payload: d
     if detail:
         return str(detail)
     return ", ".join(f"{k} : {v}" for k, v in payload.items())
-
-
-def days_fr(n: int) -> str:
-    return f"{n} jour" if n == 1 else f"{n} jours"
 
 
 def duration_fr(delta: timedelta) -> str:

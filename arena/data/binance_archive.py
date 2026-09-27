@@ -65,21 +65,6 @@ def archived_symbols(client: httpx.Client, quote: str = "USDT") -> list[str]:
     return sorted(s for s in out if s.endswith(quote))
 
 
-def crypto_perpetuals(client: httpx.Client, quote: str = "USDT") -> set[str]:
-    """Symbols currently listed as *crypto* perpetuals, from ``exchangeInfo``.
-
-    Binance now also lists equity and commodity perpetuals (201 of them, e.g.
-    ``AAPLUSDT``) under ``contractType == TRADIFI_PERPETUAL``. They are not this
-    arena's market and are excluded by ``underlyingType == COIN``.
-    """
-    info = get_json(client, f"{FAPI}/fapi/v1/exchangeInfo")
-    return {
-        s["symbol"]
-        for s in info.get("symbols", [])
-        if s.get("contractType") == "PERPETUAL" and s.get("underlyingType") == "COIN" and s.get("quoteAsset") == quote
-    }
-
-
 def tradable_symbols(client: httpx.Client, quote: str = "USDT") -> list[str]:
     """Archived symbols minus the ones we know are not crypto perpetuals.
 
