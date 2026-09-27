@@ -67,3 +67,17 @@ def test_empty_frames_are_noops(conn):
     empty = pd.DataFrame(columns=["symbol", "ts", "open", "high", "low", "close", "volume"])
     assert repo.upsert_candles(conn, EX, empty) == 0
     assert repo.latest_hl_funding(conn) == {}
+
+
+def test_first_and_last_candle_ts(conn):
+    import pandas as pd
+
+    from arena.store import candles as cstore
+    from tests.conftest import make_candles
+
+    c = make_candles(["BTC"], bars=48, start="2024-03-01T01:00:00Z")
+    cstore.upsert_candles(conn, "binance", c)
+    conn.commit()
+    assert cstore.first_candle_ts(conn, "binance", "BTC") == pd.Timestamp("2024-03-01T01:00:00Z")
+    assert cstore.last_candle_ts(conn, "binance", "BTC") == c["ts"].max()
+    assert cstore.first_candle_ts(conn, "binance", "ETH") is None

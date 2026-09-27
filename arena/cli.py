@@ -516,14 +516,26 @@ def _backfill_members(conn, universe, symbols: list[str], start, end, workers: i
     from arena.runner.wide_backfill import fetch_many
     from arena.store import candles as cstore
 
-    missing = [s for s in symbols if cstore.last_candle_ts(conn, "binance", s) is None]
-    typer.echo(f"  backfilling {len(missing)} symbols without stored history...")
-    frames = fetch_many(missing, start, end, "1h", workers)
+    # coverage, not presence: the tick's incremental ingest leaves every current member with
+    # a few recent bars, which is not a history. A symbol whose earliest stored bar is more
+    # than a week after the universe's start (or its own listing) still needs the archive.
+    grace = pd.Timedelta(days=7)
+    missing = []
+    for s in symbols:
+        first = cstore.first_candle_ts(conn, "binance", s)
+        if first is None or pd.Timestamp(first) > pd.Timestamp(start) + grace:
+            missing.append(s)
+    typer.echo(f"  backfilling {len(missing)} of {len(symbols)} symbols lacking history before {start.date()}...")
     rows = 0
-    for sym, frame in frames.items():
-        frame["symbol"] = sym
-        rows += cstore.upsert_candles(conn, "binance", frame)
+    batch = max(workers, 8)
+    for i in range(0, len(missing), batch):  # commit per batch: a killed job keeps what it fetched
+        chunk = missing[i : i + batch]
+        frames = fetch_many(chunk, start, end, "1h", workers)
+        for sym, frame in frames.items():
+            frame["symbol"] = sym
+            rows += cstore.upsert_candles(conn, "binance", frame)
         conn.commit()
+        typer.echo(f"    {min(i + batch, len(missing))}/{len(missing)} symbols, {rows} candles so far")
     funded = 0
     with make_client(timeout=60.0) as client:
         for sym in missing:

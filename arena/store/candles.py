@@ -149,6 +149,17 @@ def last_candle_ts(conn: psycopg.Connection, exchange: str, symbol: str, tf: str
     return row["ts"] if row and row["ts"] is not None else None
 
 
+def first_candle_ts(conn: psycopg.Connection, exchange: str, symbol: str, tf: str = TF) -> datetime | None:
+    """Timestamp of the newest stored 1h candle for ``symbol``, or None."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT min(ts) AS ts FROM candles WHERE exchange = %s AND symbol = %s AND tf = %s",
+            (exchange, symbol, tf),
+        )
+        row = cur.fetchone()
+    return row["ts"] if row and row["ts"] is not None else None
+
+
 def upsert_positioning(conn, exchange: str, frame) -> int:
     """Insert positioning rows, ignoring stamps already stored; returns rows written."""
     import math
