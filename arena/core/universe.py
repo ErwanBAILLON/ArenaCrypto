@@ -49,13 +49,23 @@ class Universe:
     exchange: str = "binance"  # data source: "binance" (1h perps) or "yahoo" (1d classic markets)
     bar: str = "1h"  # "1h" or "1d": the decision bar of this universe
     market: str = "crypto"  # what is traded: "crypto" | "classic" | "fx" -- families declare which they fit
+    reference_symbol: str | None = None  # explicit reference; a membership universe has no static symbol list
     membership: Membership = field(default_factory=Membership)
     impact: Impact = field(default_factory=Impact)
 
     @property
     def reference(self) -> str:
-        """Symbol used for regime labelling and warm-up: BTC when present, else the first symbol."""
-        return "BTC" if "BTC" in self.symbols else self.symbols[0]
+        """Symbol used for regime labelling and warm-up: explicit, else BTC when present, else the first symbol.
+
+        A point-in-time universe ships an empty ``symbols`` list (membership is
+        stored, not configured), so it must name its reference: the wide tick
+        died on ``symbols[0]`` the first hour it had members.
+        """
+        if self.reference_symbol:
+            return self.reference_symbol
+        if "BTC" in self.symbols:
+            return "BTC"
+        return self.symbols[0] if self.symbols else self.binance_symbol("BTC")
 
     @property
     def bar_hours(self) -> int:
@@ -98,7 +108,7 @@ def load_universe(path: str | Path | None = None) -> Universe:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=UTC)
     return Universe(
-        symbols=list(raw["symbols"]),
+        symbols=list(raw.get("symbols") or []),
         binance_suffix=str(raw.get("binance_suffix", "USDT")),
         fees=Fees(
             perp_taker=float(fees.get("perp_taker", 0.0005)),
@@ -111,6 +121,7 @@ def load_universe(path: str | Path | None = None) -> Universe:
         exchange=str(raw.get("exchange", "binance")),
         bar=str(raw.get("bar", "1h")),
         market=str(raw.get("market") or ("crypto" if str(raw.get("exchange", "binance")) == "binance" else "classic")),
+        reference_symbol=(str(raw["reference"]) if raw.get("reference") else None),
         membership=Membership(**{k: v for k, v in (raw.get("membership") or {}).items()}),
         impact=Impact(**{k: v for k, v in (raw.get("impact") or {}).items()}),
     )

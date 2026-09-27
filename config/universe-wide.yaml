@@ -10,6 +10,7 @@ name: wide
 exchange: binance
 bar: "1h"
 binance_suffix: ""        # membership stores full exchange symbols (BTCUSDT)
+reference: BTCUSDT        # regime label and warm-up anchor; `symbols` above is only a superset
 nav0: 10000.0
 history_start: "2023-11-01T00:00:00Z"
 
