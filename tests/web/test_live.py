@@ -177,3 +177,22 @@ class TestBook:
         assert 'id="board"' in home and "/static/board.js" in home and 'data-chart="board"' in home
         assert client.get("/systeme").status_code == 200
         assert client.get("/static/board.js").status_code == 200
+
+
+class TestJson:
+    def test_nan_in_a_young_book_does_not_break_the_api(self, client, seeded, monkeypatch):
+        from arena.web import live as live_mod
+
+        real = live_mod.book_state
+
+        def with_nan(conn, now):
+            state = real(conn, now)
+            state["agents"][0]["sharpe_30d"] = float("nan")
+            state["agents"][0]["psr"] = float("inf")
+            return state
+
+        monkeypatch.setattr(live_mod, "book_state", with_nan)
+        r = client.get("/api/book")
+        assert r.status_code == 200
+        a = r.json()["agents"][0]
+        assert a["sharpe_30d"] is None and a["psr"] is None

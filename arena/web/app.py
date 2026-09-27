@@ -8,6 +8,7 @@ writes, no authentication: access control lives at the ingress.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -100,6 +101,22 @@ def _templates() -> Jinja2Templates:
         }
     )
     return t
+
+
+def _finite(x: Any) -> Any:
+    """NaN and infinities become null: JSON has no spelling for them and a young book has plenty."""
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, dict):
+        return {k: _finite(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_finite(v) for v in x]
+    return x
+
+
+class ApiResponse(JSONResponse):
+    def render(self, content: Any) -> bytes:
+        return super().render(_finite(content))
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -209,12 +226,12 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/api/live")
     def api_live(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
         """The two facts a page may animate every second, and whether anything else changed."""
-        return JSONResponse(live.live_state(conn, _now()))
+        return ApiResponse(live.live_state(conn, _now()))
 
     @app.get("/api/book")
     def api_book(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
         """Every agent's stored book with the reference prices the browser marks to market."""
-        return JSONResponse(live.book_state(conn, _now()))
+        return ApiResponse(live.book_state(conn, _now()))
 
     @app.get("/api/series/{competitor_id}")
     def api_series(competitor_id: int, days: int = 90, conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
@@ -222,17 +239,17 @@ def create_app(settings: Settings) -> FastAPI:
         body = live.competitor_series(conn, competitor_id, max(1, min(days, 3650)), _now())
         if not body:
             raise HTTPException(status_code=404, detail="unknown competitor")
-        return JSONResponse(body)
+        return ApiResponse(body)
 
     @app.get("/api/board")
     def api_board(days: int = 90, conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
         """Champions and benchmarks, normalised to 100, on one time axis."""
         board = queries.leaderboard(conn, _now())
         ids = [r["id"] for r in board.rows if r["role"] != "null"][:8]
-        return JSONResponse(live.board_series(conn, ids, max(1, min(days, 3650)), _now()))
+        return ApiResponse(live.board_series(conn, ids, max(1, min(days, 3650)), _now()))
 
     @app.get("/api/leaderboard.json")
     def leaderboard_json(conn: psycopg.Connection = Depends(get_conn)) -> JSONResponse:
-        return JSONResponse(queries.leaderboard(conn, _now()).to_json())
+        return ApiResponse(queries.leaderboard(conn, _now()).to_json())
 
     return app
