@@ -226,3 +226,36 @@ class TestRetirement:
         assert gone and why["reason"] == "drawdown" and why["max_drawdown"] >= 0.25
         alert = promotion.retirement_alert(c.spec, why)
         assert alert.kind == "retired" and "drawdown" in alert.payload["detail"]
+
+
+class TestRedundancy:
+    def _cand(self, cid, name, rets, first=START, status="challenger"):
+        idx = pd.date_range(first, periods=len(rets), freq="1h", tz="UTC")
+        spec = CompetitorSpec(cid, name, "trend_ts", 1, {}, status=status)
+        return promotion.Candidate(spec=spec, first_ts=first, decisions=100, returns=pd.Series(rets, index=idx))
+
+    def test_a_copy_leaves_and_the_incumbent_stays(self):
+        rng = np.random.default_rng(3)
+        base = rng.normal(0.0002, 0.004, 24 * 40)
+        old = self._cand(1, "old_v1", base)
+        # the copy starts five days later but moves with the same market on the same hours
+        late = base[24 * 5 :] * 0.98 + rng.normal(0, 0.0001, len(base) - 24 * 5)
+        copy = self._cand(2, "copy_v2", late, first=START + timedelta(days=5))
+        other = self._cand(3, "other_v1", rng.normal(0.0, 0.004, 24 * 40))
+        gone = promotion.redundant([old, copy, other], START + timedelta(days=40))
+        assert [(loser.name, twin.name) for loser, twin, _ in gone] == [("copy_v2", "old_v1")]
+        assert gone[0][2] >= 0.95
+
+    def test_a_champion_is_never_the_one_removed(self):
+        rng = np.random.default_rng(4)
+        base = rng.normal(0.0002, 0.004, 24 * 40)
+        champ = self._cand(1, "c_v2", base, first=START + timedelta(days=3), status="champion")
+        older = self._cand(2, "o_v1", base * 1.01)
+        assert promotion.redundant([champ, older], START + timedelta(days=40)) == []
+
+    def test_too_young_to_tell(self):
+        rng = np.random.default_rng(5)
+        base = rng.normal(0.0002, 0.004, 24 * 10)
+        assert (
+            promotion.redundant([self._cand(1, "a", base), self._cand(2, "b", base)], START + timedelta(days=10)) == []
+        )

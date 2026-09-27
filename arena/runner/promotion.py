@@ -40,6 +40,8 @@ MIN_NULL_COVERAGE = 0.8
 PROMOTION_CONFIDENCE = 0.95
 RETIRE_CONFIDENCE = 0.10  # P(true Sharpe > 0) below this, once mature, and the model leaves
 RETIRE_MAX_DRAWDOWN = 0.25  # a quarter of the book lost from a peak is a verdict on its own
+REDUNDANT_CORR = 0.95  # daily returns this correlated with another live model: one of the two is a copy
+REDUNDANT_MIN_DAYS = 21
 FORWARD_ONLY_FAMILIES = frozenset({"news"})
 
 
@@ -154,6 +156,54 @@ def should_retire(c: Candidate, now: datetime, ppy: int = PPY_HOURLY) -> tuple[b
     if record["psr"] < RETIRE_CONFIDENCE:
         return True, {**evidence, "reason": "below_zero"}
     return False, {**evidence, "reason": "holds"}
+
+
+def redundant(cands: list[Candidate], now: datetime) -> list[tuple[CompetitorSpec, CompetitorSpec, float]]:
+    """``(loser, twin, corr)`` for every pair of live models whose daily returns are near-identical.
+
+    Two books that move together to 0.95 are one idea with two names, and the
+    arena pays twice for one piece of evidence. The younger one leaves; on the
+    same age, the lower Sharpe. Benchmarks and nulls never enter this test.
+    """
+    live = [c for c in cands if c.spec.role == "competitor" and len(c.returns) >= REDUNDANT_MIN_DAYS * 24]
+    if len(live) < 2:
+        return []
+    daily = pd.concat({c.spec.id: c.returns.resample("1D").sum(min_count=1) for c in live}, axis=1)
+    daily = daily.loc[:, daily.std() > 0]
+    corr = daily.corr(min_periods=REDUNDANT_MIN_DAYS)
+    by_id = {c.spec.id: c for c in live}
+    out, gone = [], set()
+    ids = list(corr.columns)
+    for i, a in enumerate(ids):
+        for b in ids[i + 1 :]:
+            v = corr.loc[a, b]
+            if not np.isfinite(v) or v < REDUNDANT_CORR or a in gone or b in gone:
+                continue
+            ca, cb = by_id[a], by_id[b]
+            # the incumbent (older) stays; on the same start, the better track record does
+            if ca.first_ts != cb.first_ts:
+                loser, keep = (ca, cb) if ca.first_ts > cb.first_ts else (cb, ca)
+            else:
+                sa, sb = sharpe(ca.returns.dropna()), sharpe(cb.returns.dropna())
+                loser, keep = (ca, cb) if sa < sb else (cb, ca)
+            if loser.spec.status == "champion":
+                continue  # a champion is never removed for looking like a challenger
+            gone.add(loser.spec.id)
+            out.append((loser.spec, keep.spec, float(v)))
+    return out
+
+
+def redundancy_alert(loser: CompetitorSpec, twin: CompetitorSpec, corr: float) -> Alert:
+    return Alert(
+        kind="retired",
+        competitor_id=loser.id,
+        payload={
+            "detail": f"{loser.name} retired (redundant): daily returns {corr:.2f} correlated with {twin.name}",
+            "reason": "redundant",
+            "twin": twin.name,
+            "corr": round(corr, 4),
+        },
+    )
 
 
 def retirement_alert(spec: CompetitorSpec, evidence: dict) -> Alert:

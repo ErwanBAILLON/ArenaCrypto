@@ -332,6 +332,11 @@ def _drift_and_promote(conn, specs: list[CompetitorSpec], ts, now, universe: Uni
             if gone:
                 registry.set_status(conn, champion.id, "retired")
                 bstore.add_alert(conn, promotion.retirement_alert(champion, why))
+    # two names for one idea: the copy leaves (across families, within this universe)
+    live = [c for c in (_candidate(conn, s, ts) for s in specs if s.role == "competitor") if c is not None]
+    for loser, twin, corr in promotion.redundant(live, now):
+        registry.set_status(conn, loser.id, "retired")
+        bstore.add_alert(conn, promotion.redundancy_alert(loser, twin, corr))
     for s in specs:
         if s.role != "competitor":
             continue
