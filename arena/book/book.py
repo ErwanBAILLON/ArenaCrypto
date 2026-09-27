@@ -102,7 +102,7 @@ class Book:
         fees = 0.0
         for sym, kind, w, fill_price in fills:
             pp = prev_prices.get(sym)
-            if pp and kind == "perp" and math.isfinite(pp):
+            if pp and kind == "perp" and math.isfinite(pp) and math.isfinite(fill_price):
                 price_ret += w * (fill_price / pp - 1.0)
             turnover += abs(w)
             fees += abs(w) * self.fees.cost(kind, abs(w), (liquidity or {}).get(sym))
