@@ -15,6 +15,7 @@ Targets whose gross exposure exceeds 1 are scaled down proportionally.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -101,15 +102,19 @@ class Book:
         fees = 0.0
         for sym, kind, w, fill_price in fills:
             pp = prev_prices.get(sym)
-            if pp and kind == "perp":
+            if pp and kind == "perp" and math.isfinite(pp):
                 price_ret += w * (fill_price / pp - 1.0)
             turnover += abs(w)
             fees += abs(w) * self.fees.cost(kind, abs(w), (liquidity or {}).get(sym))
         for sym, (kind, w) in self.positions.items():
             rate = float(funding.get(sym, 0.0) or 0.0)
+            if not math.isfinite(rate):
+                rate = 0.0
             if kind == "perp":
                 p, pp = prices.get(sym), prev_prices.get(sym)
-                if p is not None and pp:
+                # a missing or NaN close (holiday on a daily market, a gap in a feed) is "no move",
+                # never a NaN that poisons the NAV for the rest of the book's life
+                if p is not None and pp and math.isfinite(p) and math.isfinite(pp):
                     price_ret += w * (p / pp - 1.0)
                 funding_pnl += -w * rate  # long pays when rate>0, short receives
             else:  # carry: long spot / short perp, delta neutral

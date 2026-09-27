@@ -81,62 +81,63 @@ def _classify(before: float, after: float) -> str | None:
 
 
 def trade_events(conn: psycopg.Connection, competitor_id: int, start: datetime, end: datetime) -> list[Event]:
-    """Every weight change that counts, with the close the book marked it at."""
+    """Every weight change that counts, with the close the book marked it at.
+
+    Done in SQL: the previous weight of each symbol is a window ``lag`` over the
+    stored rows (the tick writes an explicit zero when a leg leaves, so absence
+    means "never held"), and the price is looked up only for the rows that
+    turned out to be events. The first version pivoted every target row into
+    pandas and loaded the candles of every symbol over the whole window; on a
+    fifteen-symbol book that was a few hundred thousand rows per page view and
+    it took the dashboard pod past its memory limit.
+    """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT ts, symbol, weight, conviction, reason FROM targets"
-            " WHERE competitor_id = %s AND ts BETWEEN %s AND %s ORDER BY ts, symbol",
-            (competitor_id, start, end),
+            """
+            WITH scope AS (
+              SELECT ts, symbol, weight, conviction, reason
+                FROM targets
+               WHERE competitor_id = %(cid)s
+                 AND ts <= %(end)s
+                 AND ts >= coalesce(
+                       (SELECT max(ts) FROM targets WHERE competitor_id = %(cid)s AND ts < %(start)s), %(start)s)
+            ),
+            steps AS (
+              SELECT ts, symbol, weight, conviction, reason,
+                     coalesce(lag(weight) OVER (PARTITION BY symbol ORDER BY ts), 0.0) AS prev
+                FROM scope
+            )
+            SELECT s.ts, s.symbol, s.weight, s.prev, s.conviction, s.reason,
+                   (SELECT c.close FROM candles c
+                     WHERE c.symbol = s.symbol AND c.ts <= s.ts
+                     ORDER BY c.ts DESC LIMIT 1) AS price
+              FROM steps s
+             WHERE s.ts >= %(start)s
+               AND (abs(s.weight - s.prev) >= %(eps)s)
+             ORDER BY s.ts, s.symbol
+            """,
+            {"cid": competitor_id, "start": start, "end": end, "eps": EVENT_EPS},
         )
         rows = cur.fetchall()
-    if not rows:
-        return []
-    frame = pd.DataFrame(rows)
-    frame["ts"] = pd.to_datetime(frame["ts"], utc=True)
-    wide = frame.pivot_table(index="ts", columns="symbol", values="weight", aggfunc="last").fillna(0.0).sort_index()
-    conviction = frame.pivot_table(index="ts", columns="symbol", values="conviction", aggfunc="last")
-    reasons = {(pd.Timestamp(r["ts"]), r["symbol"]): dict(r["reason"] or {}) for r in rows}
-    stamps = list(wide.index)
-    symbols = sorted(set(frame["symbol"]))
-    prices = _closes(conn, symbols, start, end)
-
     events: list[Event] = []
-    # the book as it stood just before the window, so a position already open on
-    # the first bar is not mis-read as a fresh entry
-    prev = pd.Series(0.0, index=wide.columns)
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT symbol, weight FROM targets WHERE competitor_id = %s AND ts = ("
-            "  SELECT max(ts) FROM targets WHERE competitor_id = %s AND ts < %s)",
-            (competitor_id, competitor_id, start),
-        )
-        for r in cur.fetchall():
-            if r["symbol"] in prev.index:
-                prev[r["symbol"]] = float(r["weight"])
-    for ts in stamps:
-        cur_w = wide.loc[ts]
-        for sym in wide.columns:
-            kind = _classify(float(prev[sym]), float(cur_w[sym]))
-            if kind is None:
-                continue
-            price = None
-            if not prices.empty and sym in prices.columns:
-                p = prices[sym].asof(ts)
-                price = float(p) if p == p else None
-            conv = conviction.loc[ts, sym] if sym in conviction.columns and ts in conviction.index else float("nan")
-            events.append(
-                Event(
-                    ts=ts.to_pydatetime(),
-                    symbol=str(sym),
-                    kind=kind,
-                    before=float(prev[sym]),
-                    after=float(cur_w[sym]),
-                    price=price,
-                    conviction=float(conv) if conv == conv else 0.0,
-                    reason=reasons.get((ts, sym), {}),
-                )
+    for r in rows:
+        before, after = float(r["prev"]), float(r["weight"])
+        kind = _classify(before, after)
+        if kind is None:
+            continue
+        price = r["price"]
+        events.append(
+            Event(
+                ts=r["ts"],
+                symbol=str(r["symbol"]),
+                kind=kind,
+                before=before,
+                after=after,
+                price=float(price) if price is not None and price == price else None,
+                conviction=float(r["conviction"] or 0.0),
+                reason=dict(r["reason"] or {}),
             )
-        prev = cur_w
+        )
     return events
 
 

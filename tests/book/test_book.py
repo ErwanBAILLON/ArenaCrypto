@@ -165,3 +165,12 @@ def test_a_live_fill_earns_to_its_price_and_pays_the_exit():
     book = Book(nav=10_000.0, fees=FEES, positions={})
     row = book.step(None, now, prev, {}, {}, fills=[("ETH", "perp", -0.2, 10.5)])
     assert row.ret == pytest.approx(-0.2 * 0.05 - 0.2 * FEES.cost("perp", 0.2), abs=1e-12)
+
+
+def test_a_nan_close_is_no_move_not_a_poisoned_nav():
+    """A daily market's holiday leaves a NaN close; the book must survive it (meta_label_v1_classic did not)."""
+    book = Book(nav=10_000.0, fees=FEES, positions={"QQQ": ("perp", 0.5), "GLD": ("perp", 0.5)})
+    prev = {"QQQ": 100.0, "GLD": 50.0}
+    now = {"QQQ": float("nan"), "GLD": 51.0}
+    row = book.step(None, now, prev, {"GLD": float("nan")}, {"QQQ": Target(0.5, 1.0), "GLD": Target(0.5, 1.0)})
+    assert row.ret == pytest.approx(0.5 * 0.02) and row.nav == pytest.approx(10_000.0 * 1.01)
