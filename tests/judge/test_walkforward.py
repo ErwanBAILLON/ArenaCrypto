@@ -1,6 +1,7 @@
 import pandas as pd
 
 from arena.book.book import FeeModel
+from arena.competitors.base import Competitor
 from arena.core.types import Target
 from arena.judge.backtest import HistoryFrames
 from arena.judge.walkforward import folds, run_walkforward
@@ -69,3 +70,40 @@ def test_fresh_competitor_per_fold_and_test_window_only():
         assert comp.calls == len(res.rows)
     all_ts = pd.concat([res.returns for _, res in results]).index
     assert all_ts.is_unique and all_ts.is_monotonic_increasing
+
+
+class _BuyAll(Competitor):
+    """Buys every symbol it is shown, equally: the membership decides what it can touch."""
+
+    family = "_buy_all"
+
+    def __init__(self):
+        super().__init__({})
+        self.seen: set[str] = set()
+
+    def decide(self, snap):
+        self.seen |= set(snap.symbols)
+        return {s: Target(weight=1.0 / len(snap.symbols), conviction=1.0) for s in snap.symbols}
+
+
+def test_point_in_time_membership_restricts_every_fold():
+    candles = make_candles(["BTC", "ETH", "SOL"], bars=24 * 300)
+    start, end = candles["ts"].min(), candles["ts"].max() + pd.Timedelta(hours=1)
+    made = []
+
+    def make():
+        made.append(_BuyAll())
+        return made[-1]
+
+    # SOL never listed before the last fold; ETH delisted after the first rebalance
+    members_at = {
+        start: ["BTC", "ETH"],
+        start + pd.Timedelta(days=200): ["BTC"],
+        start + pd.Timedelta(days=260): ["BTC", "SOL"],
+    }
+    run_walkforward(
+        make, HistoryFrames(candles), ["BTC", "ETH", "SOL"], start, end, FeeModel(), test_days=30, members_at=members_at
+    )
+    seen = set().union(*(c.seen for c in made))
+    assert seen == {"BTC", "ETH", "SOL"}
+    assert "SOL" not in made[0].seen and "ETH" not in made[-1].seen  # each fold saw only that bar's members

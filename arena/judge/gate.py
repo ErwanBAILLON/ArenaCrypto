@@ -83,7 +83,15 @@ _NULL_JOB: dict[str, Any] = {}
 def _null_worker(seed: int) -> BacktestResult:
     j = _NULL_JOB
     return run(
-        j["make_null"](seed), j["history"], j["symbols"], j["start"], j["end"], j["fees"], bar_hours=j["bar_hours"]
+        j["make_null"](seed),
+        j["history"],
+        j["symbols"],
+        j["start"],
+        j["end"],
+        j["fees"],
+        bar_hours=j["bar_hours"],
+        members_at=j.get("members_at"),
+        liquidity_at=j.get("liquidity_at"),
     )
 
 
@@ -97,6 +105,8 @@ def run_null_distribution(
     n: int = 200,
     workers: int | None = None,
     bar_hours: int = 1,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> list[BacktestResult]:
     """Backtest ``make_null(seed)`` for ``seed in range(n)`` on the same period.
 
@@ -106,9 +116,30 @@ def run_null_distribution(
     """
     workers = workers or int(os.environ.get("ARENA_WORKERS", "1"))
     if workers <= 1 or n <= 1:
-        return [run(make_null(seed), history, symbols, start, end, fees, bar_hours=bar_hours) for seed in range(n)]
+        return [
+            run(
+                make_null(seed),
+                history,
+                symbols,
+                start,
+                end,
+                fees,
+                bar_hours=bar_hours,
+                members_at=members_at,
+                liquidity_at=liquidity_at,
+            )
+            for seed in range(n)
+        ]
     _NULL_JOB.update(
-        make_null=make_null, history=history, symbols=symbols, start=start, end=end, fees=fees, bar_hours=bar_hours
+        make_null=make_null,
+        history=history,
+        symbols=symbols,
+        start=start,
+        end=end,
+        fees=fees,
+        bar_hours=bar_hours,
+        members_at=members_at,
+        liquidity_at=liquidity_at,
     )
     try:
         ctx = multiprocessing.get_context("fork")

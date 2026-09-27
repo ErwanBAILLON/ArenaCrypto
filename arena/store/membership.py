@@ -57,6 +57,28 @@ def membership_frame(conn: psycopg.Connection, universe: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def schedules(conn: psycopg.Connection, universe: str) -> tuple[dict | None, dict | None]:
+    """``(members_at, liquidity_at)`` for ``backtest.run``: who was tradable, and at what liquidity, per rebalance.
+
+    ``(None, None)`` when nothing is stored, which the backtest reads as "the
+    whole symbol list, always" -- fine for the historical arenas, a survivorship
+    bias for a point-in-time one, so callers on a membership universe must not
+    fall back silently: see ``arena.cli._history_and_null``.
+    """
+    frame = membership_frame(conn, universe)
+    if frame.empty:
+        return None, None
+    members_at = {ts: list(g["symbol"]) for ts, g in frame.groupby("ts")}
+    liquidity_at = {
+        ts: {
+            r.symbol: Member(r.symbol, int(r.rank), float(r.adv_usd), float(r.daily_vol)).liquidity
+            for r in g.itertuples()
+        }
+        for ts, g in frame.groupby("ts")
+    }
+    return members_at, liquidity_at
+
+
 def rebalance_timestamps(conn: psycopg.Connection, universe: str) -> list[datetime]:
     with conn.cursor() as cur:
         cur.execute("SELECT DISTINCT ts FROM universe_members WHERE universe = %s ORDER BY ts", (universe,))

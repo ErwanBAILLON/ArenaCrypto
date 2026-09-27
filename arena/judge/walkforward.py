@@ -65,6 +65,8 @@ def run_walkforward(
     test_days: int = 90,
     min_train_days: int = 180,
     bar_hours: int = 1,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> list[tuple[Fold, BacktestResult]]:
     """Backtest a fresh ``make_competitor()`` instance on each fold's test window.
 
@@ -74,6 +76,16 @@ def run_walkforward(
     results: list[tuple[Fold, BacktestResult]] = []
     for fold in folds(start, end, test_days=test_days, min_train_days=min_train_days):
         competitor = make_competitor()
-        res = run(competitor, history, symbols, fold.test_start, fold.test_end - BAR, fees, bar_hours=bar_hours)
+        res = run(
+            competitor,
+            history,
+            symbols,
+            fold.test_start,
+            fold.test_end - BAR,
+            fees,
+            bar_hours=bar_hours,
+            members_at=members_at,
+            liquidity_at=liquidity_at,
+        )
         results.append((fold, res))
     return results

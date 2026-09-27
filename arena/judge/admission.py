@@ -62,9 +62,13 @@ def null_threshold(
     fees: FeeModel,
     n: int = N_NULL,
     bar_hours: int = 1,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> float:
     """95th percentile Sharpe of seeded null_random runs over ``[start, end]``."""
-    return null_sharpe_threshold(null_sharpes(history, symbols, start, end, fees, n, bar_hours))
+    return null_sharpe_threshold(
+        null_sharpes(history, symbols, start, end, fees, n, bar_hours, members_at, liquidity_at)
+    )
 
 
 def null_sharpes(
@@ -75,11 +79,24 @@ def null_sharpes(
     fees: FeeModel,
     n: int = N_NULL,
     bar_hours: int = 1,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> list[float]:
     from arena.judge.metrics import sharpe
 
     make_null = lambda seed: REGISTRY["null_random"]({"seed": seed}, seed=seed, bar_hours=bar_hours)  # noqa: E731
-    results = run_null_distribution(make_null, history, symbols, start, end, fees, n=n, bar_hours=bar_hours)
+    results = run_null_distribution(
+        make_null,
+        history,
+        symbols,
+        start,
+        end,
+        fees,
+        n=n,
+        bar_hours=bar_hours,
+        members_at=members_at,
+        liquidity_at=liquidity_at,
+    )
     return [sharpe(r.returns, 8760 // bar_hours) for r in results]
 
 
@@ -93,6 +110,8 @@ def cached_null_threshold(
     n: int = N_NULL,
     q: float = 0.95,
     bar_hours: int = 1,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> float:
     """Null threshold reused within the same ISO week (the distribution barely moves day to day).
 
@@ -109,6 +128,8 @@ def cached_null_threshold(
         "n": n,
         "symbols": sorted(symbols),
         "bar_hours": bar_hours,
+        # a point-in-time universe is a different null: key on its rebalance count so a rebuild refreshes it
+        "membership": len(members_at) if members_at else 0,
     }
     with conn.cursor() as cur:
         cur.execute(
@@ -119,7 +140,7 @@ def cached_null_threshold(
         row = cur.fetchone()
     if row and row["metrics"].get("sharpes"):
         return float(np.quantile(row["metrics"]["sharpes"], q))
-    sharpes = null_sharpes(history, symbols, start, end, fees, n, bar_hours)
+    sharpes = null_sharpes(history, symbols, start, end, fees, n, bar_hours, members_at, liquidity_at)
     registry.add_trial(
         conn,
         "null_random",
@@ -150,6 +171,8 @@ def admit(
     bar_hours: int = 1,
     universe: str = "crypto",
     pbo: float | None = None,
+    members_at: dict | None = None,
+    liquidity_at: dict | None = None,
 ) -> Admission:
     """Walk-forward ``family`` with ``params`` and record the trial. Never raises on rejection.
 
@@ -163,9 +186,22 @@ def admit(
     trial_id = registry.add_trial(conn, family, "walkforward", params, {}, None, notes=notes, universe=universe)
     conn.commit()
     make = make_competitor or (lambda: REGISTRY[family](params, bar_hours=bar_hours))
-    folds = run_walkforward(make, history, symbols, start, end, fees, bar_hours=bar_hours)
+    folds = run_walkforward(
+        make, history, symbols, start, end, fees, bar_hours=bar_hours, members_at=members_at, liquidity_at=liquidity_at
+    )
     rob = (
-        run_robustness(make, history, symbols, start, end, fees, n=robustness_n, bar_hours=bar_hours)
+        run_robustness(
+            make,
+            history,
+            symbols,
+            start,
+            end,
+            fees,
+            n=robustness_n,
+            bar_hours=bar_hours,
+            members_at=members_at,
+            liquidity_at=liquidity_at,
+        )
         if robustness_n > 0
         else None
     )

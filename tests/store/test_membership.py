@@ -72,3 +72,13 @@ def test_membership_frame_is_ordered_for_backtests(conn):
     frame = mstore.membership_frame(conn, U)
     assert list(frame["ts"]) == [T1, T2, T2]
     assert list(frame["symbol"]) == ["C", "A", "B"]
+
+
+def test_schedules_are_what_the_backtest_takes(conn):
+    assert mstore.schedules(conn, U) == (None, None)  # nothing stored: the historical arenas' case
+    mstore.write_members(conn, U, T1, _members("A", "B"))
+    mstore.write_members(conn, U, T2, _members("A", "C"))
+    conn.commit()
+    members_at, liquidity_at = mstore.schedules(conn, U)
+    assert {ts: sorted(v) for ts, v in members_at.items()} == {T1: ["A", "B"], T2: ["A", "C"]}
+    assert liquidity_at[T2]["C"].adv_usd == pytest.approx(1e7 - 1) and liquidity_at[T2]["C"].usable

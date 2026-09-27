@@ -186,10 +186,39 @@ def _history_and_null(conn, universe, end: datetime):
         )
     fees = fees_of(universe)
     start = pd.Timestamp(universe.history_start)
+    pit = _point_in_time(conn, universe)
     thr = admission.cached_null_threshold(
-        conn, history, universe.symbols, start, end, fees, bar_hours=universe.bar_hours
+        conn,
+        history,
+        universe.symbols,
+        start,
+        end,
+        fees,
+        bar_hours=universe.bar_hours,
+        members_at=pit[0],
+        liquidity_at=pit[1],
     )
     return history, fees, start, thr
+
+
+def _point_in_time(conn, universe) -> tuple[dict | None, dict | None]:
+    """The stored membership schedules of a point-in-time universe; ``(None, None)`` for the historical ones.
+
+    On a membership universe the gate must see who was tradable on each bar and
+    at what liquidity, exactly as the tick does; judging founders on the
+    superset of everything that ever listed would admit a survivorship bias
+    with a config file around it. Nothing stored means the gate does not run.
+    """
+    from arena.store import membership as mstore
+
+    if not universe.membership.enabled:
+        return None, None
+    members_at, liquidity_at = mstore.schedules(conn, universe.name)
+    if not members_at:
+        raise typer.Exit(
+            code=typer.echo(f"no stored membership for universe {universe.name}: run `arena universe-build` first") or 2
+        )
+    return members_at, liquidity_at
 
 
 @app.command()
@@ -222,6 +251,8 @@ def judge(
         notes="cli judge",
         bar_hours=universe.bar_hours,
         universe=universe.name,
+        members_at=_point_in_time(conn, universe)[0],
+        liquidity_at=_point_in_time(conn, universe)[1],
     )
     v = adm.verdict
     typer.echo(f"{fam}: {'ADMITTED' if v.admitted else 'REJECTED'} failed={v.failed}")
@@ -298,6 +329,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
     end = _now()
     history, fees, start, thr = _history_and_null(conn, universe, end)
     typer.echo(f"null 95th pct Sharpe: {thr:.3f}")
+    pit = _point_in_time(conn, universe)
     names_present = {
         s.name for s in registry.list_competitors(conn, statuses=["champion", "challenger"], universe=universe.name)
     }
@@ -320,6 +352,9 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
             thr,
             notes="bootstrap founder",
             bar_hours=universe.bar_hours,
+            universe=universe.name,
+            members_at=pit[0],
+            liquidity_at=pit[1],
         )
         status = "champion" if adm.verdict.admitted else "challenger"
         cid = registry.insert_competitor(
@@ -360,12 +395,12 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
             f"{name}: {status} sharpe={m.get('sharpe', 0):.2f} dsr={m.get('dsr', 0):.2f} "
             f"p={m.get('bootstrap_p', 1):.2f} mdd={m.get('max_drawdown', 0):.1%}"
         )
-    if "news_v1" not in names_present and universe.exchange == "binance":  # the news lexicon is crypto-specific
+    if _uname(universe, "news_v1") not in names_present and universe.exchange == "binance":  # crypto-specific lexicon
         registry.insert_competitor(
             conn,
             CompetitorSpec(
                 None,
-                "news_v1",
+                _uname(universe, "news_v1"),
                 "news",
                 1,
                 {},
