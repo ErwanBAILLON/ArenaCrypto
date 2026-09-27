@@ -55,5 +55,5 @@ spec:
   activeDeadlineSeconds: 7200
   ttlSecondsAfterFinished: 86400
   template:
-    {{- include "arena.podTemplate" (dict "root" $ "component" "bootstrap-fx" "args" (list "bootstrap" "--since" .Values.fx.bootstrap.since) "resources" .Values.resources.heavy "universe" .Values.fx.universePath) | nindent 4 }}
+    {{- include "arena.podTemplate" (dict "root" $ "component" "bootstrap-fx" "args" (list "bootstrap" "--since" .Values.fx.bootstrap.since) "resources" .Values.resources.tick "universe" .Values.fx.universePath) | nindent 4 }}
 {{- end }}
