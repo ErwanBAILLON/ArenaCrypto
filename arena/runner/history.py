@@ -17,9 +17,19 @@ SCORER_VERSION = 1
 
 
 def load_history(
-    conn: psycopg.Connection, universe: Universe, start: datetime, end: datetime, with_news: bool = True
+    conn: psycopg.Connection,
+    universe: Universe,
+    start: datetime,
+    end: datetime,
+    with_news: bool = True,
+    symbols: list[str] | None = None,
 ) -> HistoryFrames:
-    syms = universe.symbols
+    """Everything a backtest or a tick reads, for ``symbols`` (default: the universe's static list).
+
+    A point-in-time universe has no static list -- membership is stored -- so
+    its callers pass every symbol that was ever a member.
+    """
+    syms = list(symbols) if symbols is not None else universe.symbols
     ex = universe.exchange
     candles = cstore.read_candles(conn, ex, syms, start, end, tf=universe.bar)
     has_funding = ex == "binance"  # classic markets have no perpetual funding nor open interest
