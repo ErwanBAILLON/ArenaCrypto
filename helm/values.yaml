@@ -65,7 +65,7 @@ fx:
   schedules:
     tick: "25 0 * * 2-6"        # after the daily bar is final, Tue-Sat
     challenger: "30 6 * * 0"
-  bootstrap: { enabled: false, since: "2021-01-01" }
+  bootstrap: { enabled: true, since: "2021-01-01" }
 
 # Third arena: a point-in-time top-50 of USDT perpetuals with per-symbol impact costs.
 # Membership is rebuilt weekly from Binance's public archive (delisted symbols included);
