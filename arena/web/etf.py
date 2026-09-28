@@ -34,6 +34,7 @@ def _default_watchlist() -> Path:
 WATCHLIST = _default_watchlist()
 EXCHANGE = "yahoo"
 TF = "1d"
+TFS = {"1d": 86400, "5m": 300}  # granularities the lab serves, and their bar length in seconds
 
 
 def watchlist(path: Path | None = None) -> list[dict]:
@@ -63,15 +64,25 @@ def symbols(conn: psycopg.Connection, path: Path | None = None) -> list[dict]:
             (EXCHANGE, TF),
         )
         stored = {r["symbol"]: r for r in cur.fetchall()}
+        cur.execute(
+            "SELECT symbol, min(ts) AS first, max(ts) AS last, count(*) AS n FROM candles"
+            " WHERE exchange = %s AND tf = '5m' GROUP BY symbol",
+            (EXCHANGE,),
+        )
+        intra = {r["symbol"]: r for r in cur.fetchall()}
     out = []
     for t in watchlist(path):
         s = stored.get(t["symbol"])
+        i = intra.get(t["symbol"])
         out.append(
             {
                 **t,
                 "first": s["first"].date().isoformat() if s else None,
                 "last": s["last"].date().isoformat() if s else None,
                 "bars": int(s["n"]) if s else 0,
+                "first_5m": i["first"].isoformat() if i else None,
+                "last_5m": i["last"].isoformat() if i else None,
+                "bars_5m": int(i["n"]) if i else 0,
             }
         )
     # stored lines the watchlist forgot are still chartable
@@ -92,18 +103,27 @@ def symbols(conn: psycopg.Connection, path: Path | None = None) -> list[dict]:
     return out
 
 
-def series(conn: psycopg.Connection, symbol: str, start: datetime | None, end: datetime | None) -> dict:
-    """Daily closes of ``symbol`` in ``[start, end]`` as ``{symbol, t: [unix days], close: [...]}``."""
+def series(conn: psycopg.Connection, symbol: str, start: datetime | None, end: datetime | None, tf: str = TF) -> dict:
+    """Closes of ``symbol`` in ``[start, end]`` at granularity ``tf``.
+
+    ``t`` is in whole bars of that granularity since the epoch (days for 1d,
+    five-minute slots for 5m), so the browser rebases and aligns on integers.
+    """
+    if tf not in TFS:
+        raise ValueError(f"unknown granularity {tf!r}")
     with conn.cursor() as cur:
         cur.execute(
             "SELECT ts, close FROM candles WHERE exchange = %s AND tf = %s AND symbol = %s"
             " AND (%s::timestamptz IS NULL OR ts >= %s) AND (%s::timestamptz IS NULL OR ts <= %s)"
             " AND close IS NOT NULL AND close = close ORDER BY ts",
-            (EXCHANGE, TF, symbol, start, start, end, end),
+            (EXCHANGE, tf, symbol, start, start, end, end),
         )
         rows = cur.fetchall()
+    step = TFS[tf]
     return {
         "symbol": symbol,
-        "t": [int(r["ts"].timestamp()) // 86400 for r in rows],
+        "tf": tf,
+        "step": step,
+        "t": [int(r["ts"].timestamp()) // step for r in rows],
         "close": [round(float(r["close"]), 6) for r in rows],
     }

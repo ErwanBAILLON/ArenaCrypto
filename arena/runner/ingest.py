@@ -113,17 +113,24 @@ def ingest_market(
 
 
 def ingest_watchlist(
-    conn: psycopg.Connection, client: httpx.Client, tickers: list[str], now: datetime
+    conn: psycopg.Connection, client: httpx.Client, tickers: list[str], now: datetime, intraday: bool = False
 ) -> dict[str, int]:
-    """Closed daily bars for the ETF lab's watchlist (5y on a line's first run, then the last month)."""
+    """Bars for the ETF lab's watchlist: daily (5y on a line's first run, then the last month),
+    or 5-minute (60 days on first run, then the last 5 days) when ``intraday``."""
     counts = {"candles": 0, "failed": 0}
     for sym in tickers:
         try:
-            last = cstore.last_candle_ts(conn, "yahoo", sym, tf="1d")
-            df = yahoo.daily(client, sym, range_="1mo" if last else "5y", now=now)
+            if intraday:
+                last = cstore.last_candle_ts(conn, "yahoo", sym, tf="5m")
+                df = yahoo.intraday(client, sym, "5m", range_="5d" if last else "60d", now=now)
+                tf = "5m"
+            else:
+                last = cstore.last_candle_ts(conn, "yahoo", sym, tf="1d")
+                df = yahoo.daily(client, sym, range_="1mo" if last else "5y", now=now)
+                tf = "1d"
             if not df.empty:
                 df["symbol"] = sym
-                counts["candles"] += cstore.upsert_candles(conn, "yahoo", df, tf="1d")
+                counts["candles"] += cstore.upsert_candles(conn, "yahoo", df, tf=tf)
             conn.commit()
         except Exception:
             conn.rollback()

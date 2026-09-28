@@ -229,3 +229,30 @@ class TestEtfLab:
         page = client.get("/etf")
         assert page.status_code == 200 and 'id="etf-chart"' in page.text and "/static/etf.js" in page.text
         assert client.get("/static/etf.js").status_code == 200
+
+
+class TestEtfIntraday:
+    def test_five_minute_series_and_bad_granularity(self, conn, client, seeded):
+        import pandas as pd
+
+        idx = pd.date_range("2026-09-25 13:35", periods=12, freq="5min", tz="UTC")
+        close = [500.0 + i * 0.1 for i in range(12)]
+        cstore.upsert_candles(
+            conn,
+            "yahoo",
+            pd.DataFrame(
+                {"symbol": "SPY", "ts": idx, "open": close, "high": close, "low": close, "close": close, "volume": 0.0}
+            ),
+            tf="5m",
+        )
+        conn.commit()
+        r = client.get(
+            "/api/etf/series", params={"symbol": "SPY", "tf": "5m", "start": "2026-09-25", "end": "2026-09-25T23:59:59"}
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["tf"] == "5m" and body["step"] == 300 and len(body["t"]) == 12
+        assert body["t"][1] - body["t"][0] == 1  # consecutive five-minute slots
+        assert client.get("/api/etf/series", params={"symbol": "SPY", "tf": "7m"}).status_code == 400
+        lines = {s["symbol"]: s for s in client.get("/api/etf/symbols").json()}
+        assert lines["SPY"]["bars_5m"] == 12

@@ -211,12 +211,18 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/api/etf/series")
     def api_etf_series(
-        symbol: str, start: str | None = None, end: str | None = None, conn: psycopg.Connection = Depends(get_conn)
+        symbol: str,
+        start: str | None = None,
+        end: str | None = None,
+        tf: str = "1d",
+        conn: psycopg.Connection = Depends(get_conn),
     ) -> ApiResponse:
-        """Daily closes of one line, optionally bounded: the lab rebases and overlays in the browser."""
+        """Closes of one line at a granularity (1d or 5m), optionally bounded; the lab rebases in the browser."""
+        if tf not in etf.TFS:
+            raise HTTPException(status_code=400, detail="tf must be 1d or 5m")
         s = datetime.fromisoformat(start).replace(tzinfo=UTC) if start else None
         e = datetime.fromisoformat(end).replace(tzinfo=UTC) if end else None
-        body = etf.series(conn, symbol, s, e)
+        body = etf.series(conn, symbol, s, e, tf=tf)
         if not body["t"]:
             raise HTTPException(status_code=404, detail="no bars for that line")
         return ApiResponse(body)

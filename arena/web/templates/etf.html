@@ -9,16 +9,25 @@
 <div class="grid etf-grid">
 <div class="card">
   <div class="etf-toolbar">
+    <label>Pas <select id="etf-tf"><option value="1d">jour</option><option value="5m">5 minutes</option></select></label>
     <label>Ligne <select id="etf-symbol">{% for l in lines %}<option value="{{ l.symbol }}" data-currency="{{ l.currency }}" data-first="{{ l.first or '' }}" data-last="{{ l.last or '' }}">{{ l.label }}{% if not l.bars %} (pas encore de données){% endif %}</option>{% endfor %}</select></label>
     <label>Du <input type="date" id="etf-start"></label>
     <label>Au <input type="date" id="etf-end"> <span class="muted small">(vide = aujourd'hui)</span></label>
     <button id="etf-add" class="btn">Ajouter la courbe</button>
     <span class="etf-sep"></span>
-    <label>Axe <select id="etf-xmode"><option value="rel">jours depuis le début</option><option value="abs">dates</option></select></label>
+    <span class="muted small">Raccourcis :</span>
+    <button class="btn small" data-preset="today">aujourd'hui</button>
+    <button class="btn small" data-preset="yesterday">hier</button>
+    <button class="btn small" data-preset="lastweekday">même jour, semaine dernière</button>
+    <button class="btn small" data-preset="thisweek">cette semaine</button>
+    <button class="btn small" data-preset="lastweek">semaine dernière</button>
+    <button class="btn small" data-preset="ytd">depuis le 1er janvier</button>
+    <span class="etf-sep"></span>
+    <label>Axe <select id="etf-xmode"><option value="rel">temps depuis le début</option><option value="abs">dates</option></select></label>
     <label>Échelle <select id="etf-scale"><option value="100">base 100</option><option value="pct">% depuis le début</option><option value="log">base 100, log</option></select></label>
   </div>
   <div class="chartbox" id="etf-chart" data-chart="etf"></div>
-  <p class="legend">Chaque courbe est rebasée à 100 à <em>sa</em> date de début : la même ligne peut être ajoutée plusieurs fois sur des périodes différentes, et l'axe « jours depuis le début » les aligne. Survole pour lire ; clique sur le graphe pour poser un point sur la courbe active (achat ou vente, au cours de clôture du jour) ; glisse pour zoomer, double-clic pour revenir.</p>
+  <p class="legend">Chaque courbe est rebasée à 100 à <em>son</em> début : la même ligne peut être ajoutée plusieurs fois sur des périodes différentes, et l'axe « temps depuis le début » les aligne (en jours au pas quotidien, en heures et minutes au pas 5 minutes : une séance contre une autre, une semaine contre une autre). Les bougies 5 minutes couvrent les 60 derniers jours et se rafraîchissent toutes les 10 minutes en séance. Survole pour lire ; clique sur le graphe pour poser un point sur la courbe active (achat ou vente, au cours de clôture du jour) ; glisse pour zoomer, double-clic pour revenir.</p>
 </div>
 
 <div class="card">

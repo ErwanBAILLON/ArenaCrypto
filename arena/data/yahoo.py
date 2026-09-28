@@ -62,3 +62,43 @@ def daily(client: httpx.Client, symbol: str, range_: str = "5y", now: datetime |
     df = df[df["ts"] <= pd.Timestamp(now)]  # drop the still-open session
     df = df.drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True)
     return df[COLUMNS]
+
+
+INTRADAY_SECONDS = {"1m": 60, "2m": 120, "5m": 300, "15m": 900, "30m": 1800, "60m": 3600}
+
+
+def intraday(
+    client: httpx.Client, symbol: str, interval: str = "5m", range_: str = "60d", now: datetime | None = None
+) -> pd.DataFrame:
+    """Closed intraday bars: ``ts`` is the bar's *close* time in UTC (open stamp + interval).
+
+    Yahoo serves 5-minute bars for the last 60 days (1-minute for 7). The bar
+    still forming is dropped, like the daily reader drops the open session.
+    """
+    now = now or datetime.now(UTC)
+    step = INTRADAY_SECONDS[interval]
+    payload = get_json(
+        client, f"{BASE}/{symbol}", params={"interval": interval, "range": range_, "includePrePost": "false"}
+    )
+    result = (payload.get("chart") or {}).get("result") or []
+    if not result:
+        return _empty()
+    res = result[0]
+    stamps = res.get("timestamp") or []
+    q = ((res.get("indicators") or {}).get("quote") or [{}])[0]
+    if not stamps:
+        return _empty()
+    df = pd.DataFrame(
+        {
+            # Yahoo's last intraday stamp is often the live quote's exact second: snap every stamp to the grid
+            "ts": pd.to_datetime([(t // step) * step + step for t in stamps], unit="s", utc=True).as_unit("ns"),
+            "open": pd.to_numeric(pd.Series(q.get("open")), errors="coerce").to_numpy(),
+            "high": pd.to_numeric(pd.Series(q.get("high")), errors="coerce").to_numpy(),
+            "low": pd.to_numeric(pd.Series(q.get("low")), errors="coerce").to_numpy(),
+            "close": pd.to_numeric(pd.Series(q.get("close")), errors="coerce").to_numpy(),
+            "volume": pd.to_numeric(pd.Series(q.get("volume")), errors="coerce").fillna(0.0).to_numpy(),
+        }
+    )
+    df = df.dropna(subset=["open", "high", "low", "close"])
+    df = df[df["ts"] <= pd.Timestamp(now)]
+    return df.drop_duplicates("ts", keep="last").sort_values("ts").reset_index(drop=True)[COLUMNS]

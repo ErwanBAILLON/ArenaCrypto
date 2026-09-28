@@ -215,8 +215,10 @@ def prune(apply: bool = typer.Option(False, help="Retire them (default: list onl
 
 
 @app.command("watch-ingest")
-def watch_ingest() -> None:
-    """Refresh the ETF lab's watchlist (config/watchlist.yaml): daily Yahoo bars, 5y on first run."""
+def watch_ingest(
+    intraday: bool = typer.Option(False, help="5-minute bars (60 days on first run) instead of daily"),
+) -> None:
+    """Refresh the ETF lab's watchlist (config/watchlist.yaml) from Yahoo: daily bars, or 5-minute with --intraday."""
     from arena.data.http import make_client
     from arena.runner.ingest import ingest_watchlist
     from arena.web.etf import watchlist
@@ -224,8 +226,9 @@ def watch_ingest() -> None:
     _, conn, _ = _ctx()
     tickers = [t["symbol"] for t in watchlist()]
     with make_client(timeout=30.0) as client:
-        counts = ingest_watchlist(conn, client, tickers, _now())
-    typer.echo(f"watchlist: {len(tickers)} lines, {counts['candles']} new candles, {counts['failed']} failed")
+        counts = ingest_watchlist(conn, client, tickers, _now(), intraday=intraday)
+    label = "watchlist 5m" if intraday else "watchlist"
+    typer.echo(f"{label}: {len(tickers)} lines, {counts['candles']} new candles, {counts['failed']} failed")
 
 
 @app.command()

@@ -52,3 +52,37 @@ def test_daily_empty_and_nan_rows():
     p["chart"]["result"][0]["indicators"]["quote"][0]["close"][0] = None
     df = daily(_client(p), "SPY", now=datetime(2025, 1, 1, tzinfo=UTC))
     assert len(df) == 1
+
+
+def test_intraday_stamps_bars_by_their_close_and_drops_the_open_one(monkeypatch):
+    from datetime import UTC, datetime
+
+    from arena.data import yahoo
+
+    stamps = [1_790_000_100 + 300 * i for i in range(4)]  # on the five-minute grid
+    payload = {
+        "chart": {
+            "result": [
+                {
+                    "timestamp": stamps,
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": [1, 2, 3, 4],
+                                "high": [1, 2, 3, 4],
+                                "low": [1, 2, 3, 4],
+                                "close": [1.0, 2.0, 3.0, 4.0],
+                                "volume": [0, 0, 0, 0],
+                            }
+                        ]
+                    },
+                    "meta": {},
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr(yahoo, "get_json", lambda client, url, params=None: payload)
+    now = datetime.fromtimestamp(stamps[-1] + 100, tz=UTC)  # the last bar is still forming
+    df = yahoo.intraday(None, "SPY", "5m", now=now)
+    assert len(df) == 3
+    assert int(df["ts"].iloc[0].timestamp()) == stamps[0] + 300  # stamped at the close

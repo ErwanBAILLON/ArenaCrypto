@@ -3,6 +3,7 @@
   (dict "name" "news"       "args" (list "news")       "schedule" .Values.schedules.news       "resources" .Values.resources.light "deadline" 1500 "tz" false)
   (dict "name" "digest"     "args" (list "digest")     "schedule" .Values.schedules.digest     "resources" .Values.resources.light "deadline" 1800 "tz" true)
   (dict "name" "watch"      "args" (list "watch-ingest") "schedule" .Values.schedules.watch    "resources" .Values.resources.light "deadline" 1500 "tz" false)
+  (dict "name" "watch-5m"   "args" (list "watch-ingest" "--intraday") "schedule" .Values.schedules.watchIntraday "resources" .Values.resources.light "deadline" 540 "tz" false)
   (dict "name" "challenger" "args" (list "challenger") "schedule" .Values.schedules.challenger "resources" .Values.resources.heavy "deadline" 21600 "tz" false)
   (dict "name" "retrain"    "args" (list "retrain")    "schedule" .Values.schedules.retrain    "resources" .Values.resources.heavy "deadline" 21600 "tz" false)
 }}

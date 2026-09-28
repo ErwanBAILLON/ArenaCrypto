@@ -23,6 +23,7 @@ schedules:
   news: "*/30 * * * *"
   digest: "0 8 * * *"              # interpreted in .Values.timeZone
   watch: "40 23 * * 1-5"           # ETF lab watchlist, after the US close
+  watchIntraday: "*/10 6-22 * * 1-5"   # 5-minute bars through the European and US sessions
   challenger: "0 3 * * 0"
   retrain: "0 4 1,15 * *"
 timeZone: Europe/Paris
