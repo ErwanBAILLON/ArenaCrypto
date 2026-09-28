@@ -157,12 +157,17 @@ def monthly_klines(client: httpx.Client, symbol: str, year: int, month: int, int
 
 
 def monthly_funding(client: httpx.Client, symbol: str, year: int, month: int) -> pd.DataFrame:
-    """One month of realised funding from the archive as DataFrame[ts, rate].
+    """One month of realised funding from the archive as DataFrame[ts, rate]: the rate *paid at that stamp*.
 
-    Columns are ``calc_time, funding_interval_hours, last_funding_rate``. The
-    interval is carried through because Binance moved several symbols from 8h
-    to 4h or 1h funding, and averaging rates of different intervals without
-    noticing is a silent factor-of-two error in every carry signal.
+    Columns are ``calc_time, funding_interval_hours, last_funding_rate``. An
+    earlier version scaled each rate to an 8h equivalent so that carry signals
+    compared across symbols; but the book *sums* stamps between two bars, and
+    Binance moved most volatile alts to 4h or 1h funding, so a 1h symbol's
+    weekly funding was booked eight times over (64 % of the archive's stamps;
+    weekly paid funding −0.08 % against −0.72 % "normalised"). The stored rate
+    is what the REST feed stores too: the rate actually exchanged at the stamp.
+    Signals that need comparability across intervals must normalise at read
+    time, knowing the stamp spacing.
     """
     url = f"{ARCHIVE}/data/futures/um/monthly/fundingRate/{symbol}/{symbol}-fundingRate-{year:04d}-{month:02d}.zip"
     resp = _get_archive(client, url)
@@ -175,13 +180,8 @@ def monthly_funding(client: httpx.Client, symbol: str, year: int, month: int) ->
         return pd.DataFrame({"ts": pd.Series(dtype="datetime64[ns, UTC]"), "rate": pd.Series(dtype="float64")})
     stamps = [int(float(r[0])) for r in rows]
     stamps = [t // 1000 if t > 10**14 else t for t in stamps]
-    hours = [float(r[1]) if len(r) > 1 and r[1] else 8.0 for r in rows]
     rates = [float(r[2]) for r in rows]
-    # normalise to an 8h-equivalent rate so signals are comparable across symbols
-    normalised = [rate * (8.0 / h) if h else rate for rate, h in zip(rates, hours, strict=True)]
-    out = pd.DataFrame(
-        {"ts": pd.to_datetime(pd.Series(stamps, dtype="int64"), unit="ms", utc=True), "rate": normalised}
-    )
+    out = pd.DataFrame({"ts": pd.to_datetime(pd.Series(stamps, dtype="int64"), unit="ms", utc=True), "rate": rates})
     return out.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
 
 

@@ -87,13 +87,13 @@ class TestKlineParsing:
 class TestFundingParsing:
     URL = f"{archive.ARCHIVE}/data/futures/um/monthly/fundingRate/X/X-fundingRate-2024-01.zip"
 
-    def test_rates_are_normalised_to_an_eight_hour_equivalent(self):
-        """Binance moved symbols from 8h to 4h funding; averaging both is a 2x error."""
+    def test_rates_are_stored_as_paid_not_normalised(self):
+        """The book sums stamps between bars: a 4h rate scaled to 8h would be booked twice over."""
         rows = "calc_time,funding_interval_hours,last_funding_rate\n"
         rows += "1704067200000,8,0.0001\n1704096000000,4,0.0001\n"
         client = _Client({self.URL: _FakeResponse(content=_zip(rows))})
         frame = archive.monthly_funding(client, "X", 2024, 1)
-        assert list(frame["rate"]) == [0.0001, 0.0002]  # the 4h rate doubles to an 8h basis
+        assert list(frame["rate"]) == [0.0001, 0.0001]  # the 4h stamp keeps the rate it actually paid
 
     def test_a_missing_month_is_empty(self):
         assert archive.monthly_funding(_Client({}), "X", 2024, 1).empty
