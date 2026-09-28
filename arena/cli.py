@@ -408,9 +408,8 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
     history, fees, start, thr = _history_and_null(conn, universe, end)
     typer.echo(f"null 95th pct Sharpe: {thr:.3f}")
     pit = _point_in_time(conn, universe)
-    names_present = {
-        s.name for s in registry.list_competitors(conn, statuses=["champion", "challenger"], universe=universe.name)
-    }
+    # every name ever registered here, retired ones included: a retired founder stays retired, it is not re-seeded
+    names_present = {s.name for s in registry.list_competitors(conn, universe=universe.name)}
     lines = []
     for fam, name, extra in founders_for(universe):
         if _uname(universe, name) in names_present:
