@@ -46,11 +46,20 @@
     const d = await r.json(); cache.set(key, d); return d;
   }
   const rebased = (d) => { const b = d.close[0]; return d.close.map((c) => (scale === "pct" ? c / b - 1 : (c / b) * 100)); };
+  // an intraday layer may keep only a window of the session, in Paris time: "09:05 → 11:30" on every day of its range
+  const parisMinutes = (secs) => { const s = new Date(secs * 1000).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour12: false, hour: "2-digit", minute: "2-digit" }); const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+  const hm = (v) => { if (!v) return null; const [h, m] = v.split(":").map(Number); return h * 60 + m; };
+  function windowed(d, l) {
+    const step = d.step || 86400; const from = hm(l.hfrom), to = hm(l.hto);
+    if (step >= 86400 || (from == null && to == null)) return d;
+    const keep = d.t.map((t) => { const mnt = parisMinutes(t * step); return (from == null || mnt >= from) && (to == null || mnt <= to); });
+    return { ...d, t: d.t.filter((_, i) => keep[i]), close: d.close.filter((_, i) => keep[i]) };
+  }
 
   /* ---- chart ---- */
   async function draw() {
     const series = []; const cols = colors();
-    for (const l of layers) { const d = await fetchSeries(l); if (d && d.t.length > 1) series.push({ l, d, y: rebased(d) }); }
+    for (const l of layers) { const raw = await fetchSeries(l); const d = raw ? windowed(raw, l) : null; if (d && d.t.length > 1) series.push({ l, d, y: rebased(d) }); }
     chartEl.textContent = "";
     if (u) { u.destroy(); u = null; }
     if (!series.length) { chartEl.textContent = "Ajoute une courbe."; renderLayers(series); renderPairs(series); return; }
@@ -91,7 +100,7 @@
     u.over.addEventListener("click", (e) => onChartClick(e, series));
     renderLayers(series); renderPairs(series); renderTrades(); renderResult(series);
   }
-  function layerName(l) { return `${l.label}${(l.tf || "1d") === "5m" ? " · 5 min" : ""} · ${l.start || "début"} → ${l.end || "auj."}`; }
+  function layerName(l) { return `${l.label}${(l.tf || "1d") === "5m" ? " · 5 min" : ""} · ${l.start || "début"} → ${l.end || "auj."}${l.hfrom || l.hto ? ` · ${l.hfrom || "…"}–${l.hto || "…"}` : ""}`; }
   function tooltip(uu, series, names, cols, fmtY) {
     const tip = chartEl.querySelector(".u-tip"); if (!tip) return;
     const i = uu.cursor.idx; if (i == null) { tip.hidden = true; return; }
@@ -132,7 +141,7 @@
       const tr = document.createElement("tr"); tr.className = l.id === active ? "active" : ""; tr.tabIndex = 0;
       const sw = document.createElement("td"); const i = document.createElement("i"); i.className = "sw"; i.style.background = cols[k % cols.length]; sw.appendChild(i);
       const name = document.createElement("td"); name.textContent = l.label;
-      const per = document.createElement("td"); per.className = "small"; per.textContent = `${l.start || "début"} → ${l.end || "aujourd'hui"}`;
+      const per = document.createElement("td"); per.className = "small"; per.textContent = `${l.start || "début"} → ${l.end || "aujourd'hui"}${(l.tf || "1d") === "5m" ? " · 5 min" : ""}${l.hfrom || l.hto ? ` · ${l.hfrom || "…"}–${l.hto || "…"}` : ""}`;
       const n = document.createElement("td"); n.className = "n"; n.textContent = s ? String(s.d.t.length) : "—";
       const perf = document.createElement("td"); const p = s ? s.d.close[s.d.close.length - 1] / s.d.close[0] - 1 : null; perf.className = "n " + (p == null ? "muted" : p >= 0 ? "pos" : "neg"); perf.textContent = p == null ? "—" : pct(p);
       const act = document.createElement("td"); const del = document.createElement("button"); del.className = "btn small"; del.textContent = "retirer"; del.addEventListener("click", (e) => { e.stopPropagation(); layers = layers.filter((x) => x.id !== l.id); if (active === l.id) active = layers[0]?.id ?? null; save("etf-layers", layers); save("etf-active", active); draw(); }); act.appendChild(del);
@@ -216,7 +225,7 @@
   /* ---- wiring ---- */
   $("etf-add").addEventListener("click", () => {
     const sel = $("etf-symbol"); const opt = sel.selectedOptions[0];
-    const l = { id: Date.now().toString(36), symbol: sel.value, tf: $("etf-tf").value, label: opt.textContent.replace(/ \(pas encore de données\)$/, ""), start: $("etf-start").value || null, end: $("etf-end").value || null, currency: opt.dataset.currency || "USD", trades: [] };
+    const l = { id: Date.now().toString(36), symbol: sel.value, tf: $("etf-tf").value, label: opt.textContent.replace(/ \(pas encore de données\)$/, ""), start: $("etf-start").value || null, end: $("etf-end").value || null, hfrom: $("etf-tf").value === "5m" ? $("etf-hfrom").value || null : null, hto: $("etf-tf").value === "5m" ? $("etf-hto").value || null : null, currency: opt.dataset.currency || "USD", trades: [] };
     layers.push(l); active = l.id; $("etf-fx").checked = l.currency !== "EUR"; save("etf-layers", layers); save("etf-active", active); draw();
   });
   $("etf-symbol").addEventListener("change", () => { const o = $("etf-symbol").selectedOptions[0]; if (o.dataset.first && !$("etf-start").value) $("etf-start").min = o.dataset.first; });

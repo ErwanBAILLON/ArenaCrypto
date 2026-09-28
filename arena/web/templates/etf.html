@@ -13,6 +13,7 @@
     <label>Ligne <select id="etf-symbol">{% for l in lines %}<option value="{{ l.symbol }}" data-currency="{{ l.currency }}" data-first="{{ l.first or '' }}" data-last="{{ l.last or '' }}">{{ l.label }}{% if not l.bars %} (pas encore de données){% endif %}</option>{% endfor %}</select></label>
     <label>Du <input type="date" id="etf-start"></label>
     <label>Au <input type="date" id="etf-end"> <span class="muted small">(vide = aujourd'hui)</span></label>
+    <label class="etf-hours">Heures <input type="time" id="etf-hfrom" step="300"> → <input type="time" id="etf-hto" step="300"> <span class="muted small">(Paris, pas 5 min seulement)</span></label>
     <button id="etf-add" class="btn">Ajouter la courbe</button>
     <span class="etf-sep"></span>
     <span class="muted small">Raccourcis :</span>

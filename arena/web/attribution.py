@@ -22,12 +22,14 @@ What it answers, in order of usefulness:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import psycopg
+
+from arena.store import candles as cstore
 
 DECILES = 5  # quintiles: deciles are noise at the sample sizes this arena has
 
@@ -67,26 +69,47 @@ def _targets(conn: psycopg.Connection, competitor_id: int, since: datetime | Non
     return pd.DataFrame(rows, columns=["ts", "symbol", "weight", "conviction"]) if rows else pd.DataFrame()
 
 
-def _closes(conn: psycopg.Connection, symbols: list[str] | None, since: datetime | None) -> pd.DataFrame:
-    """Wide closes. ``symbols=None`` means every symbol stored, which is the benchmark."""
-    sql = "SELECT ts, symbol, close FROM candles"
-    clauses, params = [], []
-    if symbols is not None:
-        if not symbols:
-            return pd.DataFrame()
-        clauses.append("symbol = ANY(%s)")
-        params.append(symbols)
-    if since is not None:
-        clauses.append("ts >= %s")
-        params.append(since)
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
+_MARKET = {"binance": ("binance", "1h"), "yahoo": ("yahoo", "1d")}
+
+
+def _market_of(conn: psycopg.Connection, competitor_id: int) -> tuple[str, str, str]:
+    """``(universe, exchange, tf)`` of a competitor: which candles its book was ever marked on."""
     with conn.cursor() as cur:
-        cur.execute(sql + " ORDER BY ts", params)
-        rows = cur.fetchall()
-    if not rows:
+        cur.execute("SELECT universe FROM competitors WHERE id = %s", (competitor_id,))
+        row = cur.fetchone()
+    universe = row["universe"] if row else "crypto"
+    exchange = "yahoo" if universe in ("classic", "fx") else "binance"
+    return universe, *_MARKET[exchange]
+
+
+def _universe_symbols(conn: psycopg.Connection, universe: str) -> list[str]:
+    """Every symbol a competitor of this universe ever targeted: the benchmark's members, bounded."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT t.symbol FROM targets t JOIN competitors c ON c.id = t.competitor_id"
+            " WHERE c.universe = %s",
+            (universe,),
+        )
+        return sorted(r["symbol"] for r in cur.fetchall())
+
+
+def _closes(
+    conn: psycopg.Connection, symbols: list[str], since: datetime | None, exchange: str = "binance", tf: str = "1h"
+) -> pd.DataFrame:
+    """Wide closes of ``symbols`` on one market, from ``since``.
+
+    An earlier version read *every* candle in the database for the benchmark
+    -- fine with 24 hourly symbols, fatal once the wide arena stored 6.7
+    million rows: the dashboard pod was OOM-killed on the attribution page.
+    The read is now bounded to the competitor's market, its universe's symbols
+    and its own lifetime, through the chunked tuple cursor.
+    """
+    if not symbols:
         return pd.DataFrame()
-    frame = pd.DataFrame(rows, columns=["ts", "symbol", "close"])
+    start = since or datetime(2000, 1, 1, tzinfo=UTC)
+    frame = cstore.read_candles(conn, exchange, symbols, start, datetime.now(UTC), tf=tf)
+    if frame.empty:
+        return pd.DataFrame()
     return frame.pivot_table(index="ts", columns="symbol", values="close", aggfunc="last").sort_index()
 
 
@@ -103,13 +126,15 @@ def episodes(conn: psycopg.Connection, competitor_id: int, since: datetime | Non
     targets = targets[targets["weight"].astype(float) != 0.0]
     if targets.empty:
         return []
-    closes = _closes(conn, sorted(set(targets["symbol"])), since)
+    since = since or pd.Timestamp(targets["ts"].min()).to_pydatetime()
+    universe_name, exchange, tf = _market_of(conn, competitor_id)
+    closes = _closes(conn, sorted(set(targets["symbol"])), since, exchange, tf)
     if closes.empty:
         return []
     # The benchmark is the *universe*, not the handful of names this competitor
     # happened to hold. Averaging only the traded symbols makes a single-name
     # position its own benchmark, and its excess return identically zero.
-    universe = _closes(conn, None, since)
+    universe = _closes(conn, _universe_symbols(conn, universe_name), since, exchange, tf)
     reference = universe if not universe.empty else closes
     benchmark = (1.0 + reference.pct_change().mean(axis=1).fillna(0.0)).cumprod()
 
