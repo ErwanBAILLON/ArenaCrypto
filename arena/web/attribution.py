@@ -82,13 +82,12 @@ def _market_of(conn: psycopg.Connection, competitor_id: int) -> tuple[str, str, 
     return universe, *_MARKET[exchange]
 
 
-def _universe_symbols(conn: psycopg.Connection, universe: str) -> list[str]:
-    """Every symbol a competitor of this universe ever targeted: the benchmark's members, bounded."""
+def _market_symbols(conn: psycopg.Connection, exchange: str, tf: str, since: datetime) -> list[str]:
+    """Every symbol with bars on this market since ``since``: the benchmark's members, bounded in time."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT DISTINCT t.symbol FROM targets t JOIN competitors c ON c.id = t.competitor_id"
-            " WHERE c.universe = %s",
-            (universe,),
+            "SELECT DISTINCT symbol FROM candles WHERE exchange = %s AND tf = %s AND ts >= %s",
+            (exchange, tf, since),
         )
         return sorted(r["symbol"] for r in cur.fetchall())
 
@@ -127,14 +126,14 @@ def episodes(conn: psycopg.Connection, competitor_id: int, since: datetime | Non
     if targets.empty:
         return []
     since = since or pd.Timestamp(targets["ts"].min()).to_pydatetime()
-    universe_name, exchange, tf = _market_of(conn, competitor_id)
+    _universe_name, exchange, tf = _market_of(conn, competitor_id)
     closes = _closes(conn, sorted(set(targets["symbol"])), since, exchange, tf)
     if closes.empty:
         return []
     # The benchmark is the *universe*, not the handful of names this competitor
     # happened to hold. Averaging only the traded symbols makes a single-name
     # position its own benchmark, and its excess return identically zero.
-    universe = _closes(conn, _universe_symbols(conn, universe_name), since, exchange, tf)
+    universe = _closes(conn, _market_symbols(conn, exchange, tf, since), since, exchange, tf)
     reference = universe if not universe.empty else closes
     benchmark = (1.0 + reference.pct_change().mean(axis=1).fillna(0.0)).cumprod()
 
