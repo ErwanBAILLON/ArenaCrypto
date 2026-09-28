@@ -30,7 +30,7 @@ tickers:
   - { symbol: CAC.PA,     label: "CAC 40 (Amundi CAC)",          currency: EUR }
   - { symbol: EXS1.DE,    label: "DAX (iShares Core DAX)",       currency: EUR }
   - { symbol: ETZ.PA,     label: "Euro Stoxx 50 (BNP ETZ)",      currency: EUR }
-  - { symbol: PHAU.PA,    label: "Or physique (WisdomTree PHAU)",currency: EUR }
+  - { symbol: 4GLD.DE,    label: "Or physique (Xetra-Gold)",       currency: EUR }
   - { symbol: MTH.PA,     label: "Obligations € 1-3 ans (Amundi MTH)", currency: EUR }
   # Currencies
   - { symbol: EURUSD=X,   label: "EUR/USD",                      currency: USD }
