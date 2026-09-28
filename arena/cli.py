@@ -225,11 +225,21 @@ def digest() -> None:
     typer.echo(text if settings.dry_run else f"digest sent: {ok}")
 
 
+def _symbols_for(conn, universe) -> list[str]:
+    """The symbols a gate or a search may read: the static list, or every stored member of a point-in-time universe."""
+    if universe.symbols:
+        return list(universe.symbols)
+    from arena.store import membership as mstore
+
+    frame = mstore.membership_frame(conn, universe.name)
+    return sorted(frame["symbol"].unique()) if not frame.empty else []
+
+
 def _history_and_null(conn, universe, end: datetime):
     from arena.runner.history import load_history
     from arena.runner.tick import fees_of
 
-    history = load_history(conn, universe, universe.history_start, end)
+    history = load_history(conn, universe, universe.history_start, end, symbols=_symbols_for(conn, universe))
     if history.candles.empty:
         raise typer.Exit(
             code=typer.echo(f"no candles stored for universe {universe.name}: run `arena backfill` first") or 2
@@ -240,7 +250,7 @@ def _history_and_null(conn, universe, end: datetime):
     thr = admission.cached_null_threshold(
         conn,
         history,
-        universe.symbols,
+        _symbols_for(conn, universe),
         start,
         end,
         fees,
@@ -293,7 +303,7 @@ def judge(
         fam,
         params,
         history,
-        universe.symbols,
+        _symbols_for(conn, universe),
         start,
         end,
         fees,
@@ -328,7 +338,7 @@ def challenger(family: str = typer.Option("", help="Restrict to one rule family"
             conn,
             fam,
             history,
-            universe.symbols,
+            _symbols_for(conn, universe),
             start,
             end,
             fees,
@@ -360,7 +370,7 @@ def retrain(window_days: int = 365) -> None:
     _, conn, universe = _ctx()
     end = _now()
     history = load_history(conn, universe, universe.history_start, end)
-    spec = rt.run(conn, history, universe.symbols, end, window_days=window_days)
+    spec = rt.run(conn, history, _symbols_for(conn, universe), end, window_days=window_days)
     typer.echo(f"meta_label: {'challenger ' + spec.name if spec else 'no new challenger'}")
 
 
@@ -395,7 +405,7 @@ def bootstrap(since: str = typer.Option("2024-01-01"), skip_backfill: bool = Fal
             fam,
             params,
             history,
-            universe.symbols,
+            _symbols_for(conn, universe),
             start,
             end,
             fees,
