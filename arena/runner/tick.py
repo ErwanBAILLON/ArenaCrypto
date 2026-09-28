@@ -151,7 +151,8 @@ def run(
     ts = min(ts, pd.Timestamp(last_bar))
     rep.ts = ts.to_pydatetime()
 
-    history = load_history(conn, universe, ts - timedelta(days=HISTORY_DAYS), ts)
+    # a point-in-time universe has no static symbol list: its history is its current members'
+    history = load_history(conn, universe, ts - timedelta(days=HISTORY_DAYS), ts, symbols=current)
     if history.candles.empty:
         return rep
     hl = cstore.latest_hl_funding(conn) if universe.exchange == "binance" else None

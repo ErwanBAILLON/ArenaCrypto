@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import pandas as pd
 import pytest
 
 from arena.core.types import CompetitorSpec
@@ -99,3 +100,47 @@ def test_prune_lists_perp_rules_running_on_currencies(conn, tmp_path):
     )
     conn.commit()
     assert [s.name for s in cli.misfits(conn, uni)] == ["carry_v1_fx"]
+
+
+def test_a_membership_universe_books_its_members(conn, tmp_path):
+    """The wide tick read history through the (empty) static list and booked nobody for a day."""
+    from arena.core.membership import Member
+    from arena.store import membership as mstore
+
+    c = make_candles(["BTCUSDT", "ETHUSDT", "SOLUSDT"], bars=24 * 300, seed=11)
+    cstore.upsert_candles(conn, "binance", c)
+    cstore.upsert_funding(conn, "binance", make_funding(["BTCUSDT", "ETHUSDT", "SOLUSDT"], candles=c))
+    first = pd.Timestamp(c["ts"].min())
+    mstore.write_members(
+        conn,
+        "w",
+        first,
+        [Member("BTCUSDT", 0, 1e8, 0.05), Member("ETHUSDT", 1, 5e7, 0.06), Member("SOLUSDT", 2, 2e7, 0.08)],
+    )
+    registry.insert_competitor(
+        conn,
+        CompetitorSpec(
+            None, "bench_btc_hold_w", "bench_btc_hold", 1, {}, role="benchmark", status="champion", universe="w"
+        ),
+    )
+    registry.insert_competitor(
+        conn, CompetitorSpec(None, "null_cash_w", "null_cash", 1, {}, role="null", status="champion", universe="w")
+    )
+    conn.commit()
+    p = tmp_path / "w.yaml"
+    p.write_text(
+        "name: w\nexchange: binance\nbinance_suffix: ''\nreference: BTCUSDT\nsymbols: []\nnav0: 10000\n"
+        "history_start: '2024-01-01T00:00:00Z'\nmembership: {enabled: true, top_n: 3}\n"
+        "fees: {perp_taker: 0.0005, slippage: 0.0002, spot_taker: 0.001}\n"
+    )
+    universe = load_universe(p)
+    last = c["ts"].max()
+    rep = run_tick(
+        conn,
+        Settings("x", "", "", True, None),
+        universe,
+        (last + timedelta(minutes=5)).to_pydatetime(),
+        client=None,
+        ingest=False,
+    )
+    assert rep.failed == [] and len(rep.booked) == 2, rep
