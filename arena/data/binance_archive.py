@@ -20,6 +20,7 @@ import csv
 import io
 import logging
 import re
+import time
 import zipfile
 from datetime import date, datetime
 
@@ -100,6 +101,28 @@ def _months(start: date, end: date) -> list[tuple[int, int]]:
     return out
 
 
+def _get_archive(client: httpx.Client, url: str, tries: int = 5):
+    """GET an archive object; None on 404 (a month the symbol did not trade); retries 5xx/429 with backoff.
+
+    ``data.binance.vision`` throttles bursts with 503s. Twelve workers walking
+    thirty months each is a burst; without this, a throttled run "succeeds"
+    with empty frames, which is worse than failing.
+    """
+    delay = 2.0
+    for attempt in range(tries):
+        resp = client.get(url)
+        if resp.status_code == 404:
+            return None
+        if resp.status_code < 500 and resp.status_code != 429:
+            resp.raise_for_status()
+            return resp
+        if attempt == tries - 1:
+            resp.raise_for_status()
+        time.sleep(delay)
+        delay = min(delay * 3, 60.0)
+    return None
+
+
 def monthly_klines(client: httpx.Client, symbol: str, year: int, month: int, interval: str = "1h") -> pd.DataFrame:
     """One month of klines from the archive, or an empty frame when absent.
 
@@ -107,10 +130,9 @@ def monthly_klines(client: httpx.Client, symbol: str, year: int, month: int, int
     trading then, which is information the point-in-time universe needs.
     """
     url = f"{ARCHIVE}/data/futures/um/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{year:04d}-{month:02d}.zip"
-    resp = client.get(url)
-    if resp.status_code == 404:
+    resp = _get_archive(client, url)
+    if resp is None:
         return _empty()
-    resp.raise_for_status()
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         name = zf.namelist()[0]
         text = zf.read(name).decode("utf-8")
@@ -143,10 +165,9 @@ def monthly_funding(client: httpx.Client, symbol: str, year: int, month: int) ->
     noticing is a silent factor-of-two error in every carry signal.
     """
     url = f"{ARCHIVE}/data/futures/um/monthly/fundingRate/{symbol}/{symbol}-fundingRate-{year:04d}-{month:02d}.zip"
-    resp = client.get(url)
-    if resp.status_code == 404:
+    resp = _get_archive(client, url)
+    if resp is None:
         return pd.DataFrame({"ts": pd.Series(dtype="datetime64[ns, UTC]"), "rate": pd.Series(dtype="float64")})
-    resp.raise_for_status()
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         text = zf.read(zf.namelist()[0]).decode("utf-8")
     rows = [r for r in csv.reader(io.StringIO(text)) if r and not r[0].startswith("calc_time")]

@@ -528,18 +528,45 @@ def _backfill_members(conn, universe, symbols: list[str], start, end, workers: i
     typer.echo(f"  backfilling {len(missing)} of {len(symbols)} symbols lacking history before {start.date()}...")
     rows = 0
     batch = max(workers, 8)
+    still: list[str] = []
     for i in range(0, len(missing), batch):  # commit per batch: a killed job keeps what it fetched
         chunk = missing[i : i + batch]
         frames = fetch_many(chunk, start, end, "1h", workers)
-        for sym, frame in frames.items():
+        for sym in chunk:
+            frame = frames.get(sym)
+            if frame is None or frame.empty:
+                still.append(sym)
+                continue
             frame["symbol"] = sym
             rows += cstore.upsert_candles(conn, "binance", frame)
         conn.commit()
         typer.echo(f"    {min(i + batch, len(missing))}/{len(missing)} symbols, {rows} candles so far")
+    if still:
+        # the archive throttled or lacks the month: the REST klines walk the same history page by page
+        from arena.data import binance as rest
+
+        typer.echo(f"  archive gave nothing for {len(still)} symbols; walking REST klines instead...")
+        with make_client(timeout=30.0) as client:
+            for n, sym in enumerate(still, 1):
+                try:
+                    frame = rest.klines(client, sym, int(pd.Timestamp(start).timestamp() * 1000), interval="1h")
+                except Exception as exc:  # one symbol must not end the run
+                    log.warning("REST klines failed for %s: %s", sym, exc)
+                    continue
+                if not frame.empty:
+                    frame["symbol"] = sym
+                    rows += cstore.upsert_candles(conn, "binance", frame)
+                    conn.commit()
+                if n % 25 == 0:
+                    typer.echo(f"    REST {n}/{len(still)}, {rows} candles so far")
     funded = 0
     with make_client(timeout=60.0) as client:
         for sym in missing:
-            f = archive.funding_history(client, sym, start, end)
+            try:
+                f = archive.funding_history(client, sym, start, end)
+            except Exception as exc:
+                log.warning("funding history failed for %s: %s", sym, exc)
+                continue
             if not f.empty:
                 f["symbol"] = sym
                 funded += cstore.upsert_funding(conn, "binance", f)
