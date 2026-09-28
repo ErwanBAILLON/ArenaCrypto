@@ -220,6 +220,7 @@ class TestEtfLab:
             lines["SPY"]["bars"] == 30 and lines["SPY"]["currency"] == "USD" and lines["SPY"]["first"] == "2024-01-02"
         )
         assert lines["CW8.PA"]["bars"] == 0  # on the watchlist, nothing stored yet: still listed
+        assert [s["symbol"] for s in etf.symbols(conn, path=__import__("pathlib").Path("/nonexistent.yaml"))] == ["SPY"]
         r = client.get("/api/etf/series", params={"symbol": "SPY", "start": "2024-01-10", "end": "2024-01-20"})
         assert r.status_code == 200
         body = r.json()

@@ -9,19 +9,38 @@ the browser on these plain arrays.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
 import psycopg
 import yaml
 
-WATCHLIST = Path(__file__).resolve().parents[2] / "config" / "watchlist.yaml"
+
+def _default_watchlist() -> Path:
+    """``WATCHLIST_PATH`` if set, else the image's /app/config, else the repo checkout next to the package."""
+    env = os.environ.get("WATCHLIST_PATH")
+    if env:
+        return Path(env)
+    for candidate in (
+        Path("/app/config/watchlist.yaml"),
+        Path(__file__).resolve().parents[2] / "config" / "watchlist.yaml",
+    ):
+        if candidate.exists():
+            return candidate
+    return Path(__file__).resolve().parents[2] / "config" / "watchlist.yaml"
+
+
+WATCHLIST = _default_watchlist()
 EXCHANGE = "yahoo"
 TF = "1d"
 
 
 def watchlist(path: Path | None = None) -> list[dict]:
-    raw = yaml.safe_load((path or WATCHLIST).read_text()) or {}
+    p = path or WATCHLIST
+    if not p.exists():
+        return []
+    raw = yaml.safe_load(p.read_text()) or {}
     out = []
     for t in raw.get("tickers", []):
         out.append(
