@@ -35,6 +35,7 @@ FOUNDERS: list[tuple[str, str, dict]] = [
     ("price_action", "price_action_position_v1", {"style": "position"}),
     ("funding_skew", "funding_skew_v1", {}),
     ("crowded_trend", "crowded_trend_v1", {}),
+    ("majors_tsmom", "majors_tsmom_v1", {}),  # the one weekly rule the 2026-09-28 fast harness left standing
 ]
 FUNDING_FAMILIES = {"carry", "bench_carry_equal", "funding_skew", "crowded_trend"}  # need perp funding: crypto only
 

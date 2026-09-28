@@ -199,6 +199,20 @@ CARDS: dict[str, FamilyCard] = {
             "Le backtest ne voit pas les mèches intra-barre : un stop touché puis repris dans la même barre n'est pas détecté.",
         ],
     ),
+    "majors_tsmom": FamilyCard(
+        "majors_tsmom",
+        "Majors : filtre de tendance 30 jours",
+        "Sur BTC et ETH seulement : acheté quand le rendement des 30 derniers jours est positif, à plat sinon, dimensionné pour "
+        "20 % de volatilité annuelle. Sur cinq ans de données point-in-time et aux coûts de l'arène, ce filtre garde le rendement "
+        "d'être toujours long avec la moitié du drawdown (14 % contre 28 %) ; les horizons plus longs et les paniers plus larges "
+        "faisaient moins bien que ne rien faire, et vendre à découvert perdait.",
+        ["Cours horaires Binance", "Rendement 30 jours", "Volatilité réalisée 30 jours"],
+        "Une fois par semaine, le lundi, tient entre-temps",
+        [
+            "Ce n'est pas une source de rendement : c'est du bêta BTC/ETH avec les pires trimestres coupés. Sans marché haussier, rien.",
+            "Un retournement brutal est payé pendant un mois avant que le filtre réagisse.",
+        ],
+    ),
     "fx_tsmom": FamilyCard(
         "fx_tsmom",
         "Devises : momentum multi-horizon",

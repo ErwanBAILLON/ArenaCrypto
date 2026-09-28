@@ -5,6 +5,7 @@ from arena.competitors import (  # noqa: E402,F401
     crowded_trend,
     funding_skew,
     fx,
+    majors_tsmom,
     meta_label,
     news,
     nulls,
