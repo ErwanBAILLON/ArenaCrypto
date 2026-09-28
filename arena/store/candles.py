@@ -12,6 +12,7 @@ from datetime import datetime
 
 import pandas as pd
 import psycopg
+from psycopg.rows import tuple_row
 
 TF = "1h"
 
@@ -36,8 +37,36 @@ def _insert_ignore(conn: psycopg.Connection, sql: str, rows: list[tuple]) -> int
         return cur.rowcount
 
 
-def _frame(rows: list[dict], cols: list[str]) -> pd.DataFrame:
-    df = pd.DataFrame(rows, columns=cols)
+def _frame(rows: list, cols: list[str]) -> pd.DataFrame:
+    df = pd.DataFrame.from_records(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+    df["ts"] = pd.to_datetime(df["ts"], utc=True)
+    return df
+
+
+_CHUNK = 200_000
+
+
+def _read_frame(conn: psycopg.Connection, sql: str, params: tuple, cols: list[str]) -> pd.DataFrame:
+    """Run a bulk read through a server-side cursor of tuples, in chunks.
+
+    The default connection hands back one dict per row. On the point-in-time
+    arena a history read is 6.7 million candles, and 6.7 million dicts of seven
+    keys is several gigabytes before pandas sees a single number -- the gate
+    was OOM-killed at 6Gi on that alone. Tuples fetched in chunks and stacked
+    as frames keep the peak close to the frame itself.
+    """
+    parts: list[pd.DataFrame] = []
+    with conn.cursor(name=f"bulk_{id(sql) & 0xFFFF}_{len(parts)}", row_factory=tuple_row) as cur:
+        cur.itersize = _CHUNK
+        cur.execute(sql, params)
+        while True:
+            rows = cur.fetchmany(_CHUNK)
+            if not rows:
+                break
+            parts.append(pd.DataFrame.from_records(rows, columns=cols))
+    if not parts:
+        return _frame([], cols)
+    df = pd.concat(parts, ignore_index=True)
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     return df
 
@@ -92,27 +121,27 @@ def read_candles(
     conn: psycopg.Connection, exchange: str, symbols: Sequence[str], start: datetime, end: datetime, tf: str = TF
 ) -> pd.DataFrame:
     """1h candles for ``symbols`` with ``start <= ts <= end``, ordered by (symbol, ts)."""
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT symbol, ts, open, high, low, close, volume FROM candles"
-            " WHERE exchange = %s AND tf = %s AND symbol = ANY(%s) AND ts BETWEEN %s AND %s"
-            " ORDER BY symbol, ts",
-            (exchange, tf, list(symbols), start, end),
-        )
-        return _frame(cur.fetchall(), CANDLE_COLS)
+    return _read_frame(
+        conn,
+        "SELECT symbol, ts, open, high, low, close, volume FROM candles"
+        " WHERE exchange = %s AND tf = %s AND symbol = ANY(%s) AND ts BETWEEN %s AND %s"
+        " ORDER BY symbol, ts",
+        (exchange, tf, list(symbols), start, end),
+        CANDLE_COLS,
+    )
 
 
 def read_funding(
     conn: psycopg.Connection, exchange: str, symbols: Sequence[str], start: datetime, end: datetime
 ) -> pd.DataFrame:
     """Funding rates for ``symbols`` with ``start <= ts <= end``."""
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT symbol, ts, rate FROM funding"
-            " WHERE exchange = %s AND symbol = ANY(%s) AND ts BETWEEN %s AND %s ORDER BY symbol, ts",
-            (exchange, list(symbols), start, end),
-        )
-        return _frame(cur.fetchall(), ["symbol", "ts", "rate"])
+    return _read_frame(
+        conn,
+        "SELECT symbol, ts, rate FROM funding"
+        " WHERE exchange = %s AND symbol = ANY(%s) AND ts BETWEEN %s AND %s ORDER BY symbol, ts",
+        (exchange, list(symbols), start, end),
+        ["symbol", "ts", "rate"],
+    )
 
 
 def read_open_interest(
