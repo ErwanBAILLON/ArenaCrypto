@@ -472,6 +472,9 @@ def universe_build(
     since: str = typer.Option("", help="Override the universe's history_start"),
     workers: int = typer.Option(12, help="Parallel archive downloads"),
     backfill: bool = typer.Option(True, help="Also fetch hourly history for members lacking it"),
+    archive: bool = typer.Option(
+        True, help="Try the monthly archive first (off: REST klines only, when the archive throttles)"
+    ),
 ) -> None:
     """Rebuild the point-in-time universe from Binance's public archive.
 
@@ -501,10 +504,10 @@ def universe_build(
     )
     typer.echo(f"  {len(build.symbols)} symbols were members at least once, weekly churn {build.churn:.1%}")
     if backfill:
-        _backfill_members(conn, universe, build.symbols, start.to_pydatetime(), end, workers)
+        _backfill_members(conn, universe, build.symbols, start.to_pydatetime(), end, workers, use_archive=archive)
 
 
-def _backfill_members(conn, universe, symbols: list[str], start, end, workers: int) -> None:
+def _backfill_members(conn, universe, symbols: list[str], start, end, workers: int, use_archive: bool = True) -> None:
     """Hourly candles and funding from the archive for every member lacking history.
 
     The incremental REST ingest only walks forward from the last stored bar, so
@@ -529,8 +532,12 @@ def _backfill_members(conn, universe, symbols: list[str], start, end, workers: i
     rows = 0
     batch = max(workers, 8)
     still: list[str] = []
-    for i in range(0, len(missing), batch):  # commit per batch: a killed job keeps what it fetched
-        chunk = missing[i : i + batch]
+    if not use_archive:
+        still, missing_archive = list(missing), []
+    else:
+        missing_archive = missing
+    for i in range(0, len(missing_archive), batch):  # commit per batch: a killed job keeps what it fetched
+        chunk = missing_archive[i : i + batch]
         frames = fetch_many(chunk, start, end, "1h", workers)
         for sym in chunk:
             frame = frames.get(sym)
@@ -540,7 +547,7 @@ def _backfill_members(conn, universe, symbols: list[str], start, end, workers: i
             frame["symbol"] = sym
             rows += cstore.upsert_candles(conn, "binance", frame)
         conn.commit()
-        typer.echo(f"    {min(i + batch, len(missing))}/{len(missing)} symbols, {rows} candles so far")
+        typer.echo(f"    {min(i + batch, len(missing_archive))}/{len(missing_archive)} symbols, {rows} candles so far")
     if still:
         # the archive throttled or lacks the month: the REST klines walk the same history page by page
         from arena.data import binance as rest
@@ -563,7 +570,12 @@ def _backfill_members(conn, universe, symbols: list[str], start, end, workers: i
     with make_client(timeout=60.0) as client:
         for sym in missing:
             try:
-                f = archive.funding_history(client, sym, start, end)
+                if use_archive:
+                    f = archive.funding_history(client, sym, start, end)
+                else:
+                    from arena.data import binance as rest
+
+                    f = rest.funding(client, sym, int(pd.Timestamp(start).timestamp() * 1000))
             except Exception as exc:
                 log.warning("funding history failed for %s: %s", sym, exc)
                 continue
