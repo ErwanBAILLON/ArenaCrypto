@@ -196,3 +196,35 @@ class TestJson:
         assert r.status_code == 200
         a = r.json()["agents"][0]
         assert a["sharpe_30d"] is None and a["psr"] is None
+
+
+class TestEtfLab:
+    def test_watchlist_and_series(self, conn, client, seeded):
+        import pandas as pd
+
+        from arena.web import etf
+
+        idx = pd.date_range("2024-01-02", periods=30, freq="1D", tz="UTC")
+        close = [100.0 + i for i in range(30)]
+        cstore.upsert_candles(
+            conn,
+            "yahoo",
+            pd.DataFrame(
+                {"symbol": "SPY", "ts": idx, "open": close, "high": close, "low": close, "close": close, "volume": 0.0}
+            ),
+            tf="1d",
+        )
+        conn.commit()
+        lines = {s["symbol"]: s for s in etf.symbols(conn)}
+        assert (
+            lines["SPY"]["bars"] == 30 and lines["SPY"]["currency"] == "USD" and lines["SPY"]["first"] == "2024-01-02"
+        )
+        assert lines["CW8.PA"]["bars"] == 0  # on the watchlist, nothing stored yet: still listed
+        r = client.get("/api/etf/series", params={"symbol": "SPY", "start": "2024-01-10", "end": "2024-01-20"})
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["t"]) == 11 and body["close"][0] == 108.0
+        assert client.get("/api/etf/series", params={"symbol": "NOPE"}).status_code == 404
+        page = client.get("/etf")
+        assert page.status_code == 200 and 'id="etf-chart"' in page.text and "/static/etf.js" in page.text
+        assert client.get("/static/etf.js").status_code == 200

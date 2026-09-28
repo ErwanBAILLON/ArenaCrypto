@@ -112,6 +112,26 @@ def ingest_market(
     return counts
 
 
+def ingest_watchlist(
+    conn: psycopg.Connection, client: httpx.Client, tickers: list[str], now: datetime
+) -> dict[str, int]:
+    """Closed daily bars for the ETF lab's watchlist (5y on a line's first run, then the last month)."""
+    counts = {"candles": 0, "failed": 0}
+    for sym in tickers:
+        try:
+            last = cstore.last_candle_ts(conn, "yahoo", sym, tf="1d")
+            df = yahoo.daily(client, sym, range_="1mo" if last else "5y", now=now)
+            if not df.empty:
+                df["symbol"] = sym
+                counts["candles"] += cstore.upsert_candles(conn, "yahoo", df, tf="1d")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            counts["failed"] += 1
+            log.exception("watchlist ingest failed for %s", sym)
+    return counts
+
+
 def ingest_yahoo(conn: psycopg.Connection, client: httpx.Client, universe: Universe, now: datetime) -> dict[str, int]:
     """Closed daily bars for every Yahoo ticker of a classic-markets universe (5y on first run)."""
     counts = {"candles": 0}

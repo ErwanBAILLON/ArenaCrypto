@@ -214,6 +214,20 @@ def prune(apply: bool = typer.Option(False, help="Retire them (default: list onl
     typer.echo(f"{len(gone)} misfit(s){' retired' if apply else ''}")
 
 
+@app.command("watch-ingest")
+def watch_ingest() -> None:
+    """Refresh the ETF lab's watchlist (config/watchlist.yaml): daily Yahoo bars, 5y on first run."""
+    from arena.data.http import make_client
+    from arena.runner.ingest import ingest_watchlist
+    from arena.web.etf import watchlist
+
+    _, conn, _ = _ctx()
+    tickers = [t["symbol"] for t in watchlist()]
+    with make_client(timeout=30.0) as client:
+        counts = ingest_watchlist(conn, client, tickers, _now())
+    typer.echo(f"watchlist: {len(tickers)} lines, {counts['candles']} new candles, {counts['failed']} failed")
+
+
 @app.command()
 def digest() -> None:
     """Send the daily leaderboard digest."""

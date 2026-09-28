@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from arena.explain import families
 from arena.settings import Settings
 from arena.store.db import connect
-from arena.web import attribution, fr, live, queries, svg
+from arena.web import attribution, etf, fr, live, queries, svg
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -200,6 +200,26 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/modeles", response_class=HTMLResponse)
     def modeles(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
         return render(request, "families.html", families=queries.families_overview(conn), active="modeles")
+
+    @app.get("/etf", response_class=HTMLResponse)
+    def etf_lab(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:
+        return render(request, "etf.html", lines=etf.symbols(conn), active="etf")
+
+    @app.get("/api/etf/symbols")
+    def api_etf_symbols(conn: psycopg.Connection = Depends(get_conn)) -> ApiResponse:
+        return ApiResponse(etf.symbols(conn))
+
+    @app.get("/api/etf/series")
+    def api_etf_series(
+        symbol: str, start: str | None = None, end: str | None = None, conn: psycopg.Connection = Depends(get_conn)
+    ) -> ApiResponse:
+        """Daily closes of one line, optionally bounded: the lab rebases and overlays in the browser."""
+        s = datetime.fromisoformat(start).replace(tzinfo=UTC) if start else None
+        e = datetime.fromisoformat(end).replace(tzinfo=UTC) if end else None
+        body = etf.series(conn, symbol, s, e)
+        if not body["t"]:
+            raise HTTPException(status_code=404, detail="no bars for that line")
+        return ApiResponse(body)
 
     @app.get("/alerts", response_class=HTMLResponse)
     def alerts(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> HTMLResponse:

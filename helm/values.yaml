@@ -22,6 +22,7 @@ schedules:
   tick: "5 * * * *"
   news: "*/30 * * * *"
   digest: "0 8 * * *"              # interpreted in .Values.timeZone
+  watch: "40 23 * * 1-5"           # ETF lab watchlist, after the US close
   challenger: "0 3 * * 0"
   retrain: "0 4 1,15 * *"
 timeZone: Europe/Paris
