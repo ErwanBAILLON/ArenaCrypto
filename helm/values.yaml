@@ -1,6 +1,6 @@
 image:
   repository: git.ebaillon.fr/bots/arena
-  tag: "0.6.0-dd37c38"   # sha-pinned: the bare version tag is re-pushed on every commit, so
+  tag: "0.6.0-bf7e7ec"   # sha-pinned: the bare version tag is re-pushed on every commit, so
                          # "Synced" would report a build the node had already cached (README: tags are pinned)
   pullPolicy: IfNotPresent
 
