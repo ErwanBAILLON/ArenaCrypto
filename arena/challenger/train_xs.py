@@ -69,6 +69,8 @@ def build_dataset(
     costs: pd.Series | float = 0.0,
     bar_hours: int = 1,
     use_trend_weights: bool = True,
+    label: str = "barrier",
+    horizon_hours: int = 72,
 ) -> Dataset:
     """Panel features and barrier labels for every rebalance date in ``symbols_at``.
 
@@ -76,11 +78,23 @@ def build_dataset(
     date**, not the ones tradable today. Feeding today's survivors here is the
     survivorship bias the whole design exists to avoid, and no amount of
     cross-validation downstream can undo it.
+
+    ``label="barrier"`` (default) is the triple barrier on the ROI ladder, net
+    of costs. ``label="rank"`` is the cross-sectional percentile rank of the
+    forward ``horizon_hours`` excess return, centred on zero: the plainer target
+    the literature uses, robust to a +300 % week, and the one that walked
+    forward positive where the barrier did not (docs/specs/2026-09-28-night-rd.md).
     """
+    if label not in ("barrier", "rank"):
+        raise ValueError(f"unknown label {label!r}")
     wide = candles.pivot_table(index="ts", columns="symbol", values="close", aggfunc="last").sort_index()
     returns = wide.pct_change()
     benchmark = returns.mean(axis=1)
     excess = returns.sub(benchmark, axis=0)
+    if label == "rank":
+        fwd = wide.shift(-horizon_hours) / wide - 1.0
+        fwd_excess = fwd.sub(fwd.mean(axis=1), axis=0)
+        last_bar = wide.index.max()
 
     feature_rows: list[pd.DataFrame] = []
     label_rows: list[pd.DataFrame] = []
@@ -96,8 +110,11 @@ def build_dataset(
         panel = build_panel(snap)
         if panel.empty:
             continue
-        labels = label_panel(excess[names], pd.DatetimeIndex([ts]), ladder, stop, costs)
-        labels = labels[labels["barrier"] != "open"]
+        if label == "rank":
+            labels = _rank_labels(fwd_excess, ts, names, horizon_hours, last_bar)
+        else:
+            labels = label_panel(excess[names], pd.DatetimeIndex([ts]), ladder, stop, costs)
+            labels = labels[labels["barrier"] != "open"]
         if labels.empty:
             continue
         panel = panel.loc[panel.index.intersection(labels["symbol"])]
@@ -130,8 +147,12 @@ def build_dataset(
     # date, which is a market-timing component this family is not allowed to
     # trade -- a dollar-neutral book cannot express it, so learning it is waste
     # at best and a hidden beta bet at worst.
-    tamed = _winsorise(merged["net_return"])
-    target = tamed.groupby(merged["ts"]).transform(lambda s: s - s.mean())
+    if label == "rank":
+        # already a centred percentile rank per date; nothing to winsorise, nothing to demean
+        target = merged["net_return"].astype(float)
+    else:
+        tamed = _winsorise(merged["net_return"])
+        target = tamed.groupby(merged["ts"]).transform(lambda s: s - s.mean())
 
     event_table = merged[["ts", "symbol", "exit_ts", "label", "net_return", "bars_held", "barrier"]].copy()
     trend = None
@@ -147,6 +168,28 @@ def build_dataset(
         target=target.rename("target"),
         weights=weights,
         columns=columns,
+    )
+
+
+def _rank_labels(fwd_excess: pd.DataFrame, ts, names: list[str], horizon_hours: int, last_bar) -> pd.DataFrame:
+    """One row per symbol: centred percentile rank of the forward excess return; empty while the horizon is open."""
+    exit_ts = ts + pd.Timedelta(hours=horizon_hours)
+    if ts not in fwd_excess.index or exit_ts > last_bar:
+        return pd.DataFrame(columns=["ts", "symbol", "exit_ts", "label", "net_return", "bars_held", "barrier"])
+    row = fwd_excess.loc[ts].reindex(names).dropna()
+    if len(row) < 5:
+        return pd.DataFrame(columns=["ts", "symbol", "exit_ts", "label", "net_return", "bars_held", "barrier"])
+    rank = row.rank(pct=True) - 0.5
+    return pd.DataFrame(
+        {
+            "ts": ts,
+            "symbol": rank.index,
+            "exit_ts": exit_ts,
+            "label": np.sign(rank.to_numpy()).astype(int),
+            "net_return": rank.to_numpy(),
+            "bars_held": horizon_hours,
+            "barrier": "rank",
+        }
     )
 
 

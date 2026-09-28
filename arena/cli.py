@@ -602,6 +602,10 @@ def train_xs_cmd(
     n_features: int = typer.Option(4000, help="Random Fourier feature width"),
     gamma: float = typer.Option(0.02, help="RBF bandwidth"),
     capacity: float = typer.Option(1_000_000.0, help="Deployment size the labels are costed at"),
+    label: str = typer.Option(
+        "barrier", help="Training target: 'barrier' (ROI ladder, net of costs) or 'rank' (forward excess-return rank)"
+    ),
+    horizon: int = typer.Option(72, help="Forward horizon in hours for label='rank'"),
 ) -> None:
     """Train the cross-sectional model and insert it as a challenger.
 
@@ -627,7 +631,9 @@ def train_xs_cmd(
     fees = fees_of(universe)
     round_trip = 2 * fees.cost("perp", 0.05, None) if fees.impact else 2 * fees.perp_cost
 
-    data = tx.build_dataset(history.candles, history.funding, symbols_at, costs=round_trip)
+    data = tx.build_dataset(
+        history.candles, history.funding, symbols_at, costs=round_trip, label=label, horizon_hours=horizon
+    )
     typer.echo(f"dataset: {len(data)} rows, {len(data.columns)} features")
     selection = tx.select(data, n_features=n_features, gamma=gamma)
     typer.echo(

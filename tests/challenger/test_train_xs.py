@@ -165,3 +165,22 @@ class TestSearch:
         table = out.table
         assert list(table.columns) == ["n_features", "gamma", "lam", "cv_spread"]
         assert table["cv_spread"].is_monotonic_decreasing
+
+
+class TestRankLabel:
+    def test_rank_label_is_a_centred_percentile_per_date(self, data):
+        candles, funding, symbols_at = data
+        data = train_xs.build_dataset(candles, funding, symbols_at, label="rank", horizon_hours=72)
+        assert len(data) > 0
+        assert data.target.between(-0.5, 0.5).all()
+        per_date = data.target.groupby(data.events["ts"]).mean()
+        assert (per_date.abs() < 0.05).all()  # centred on every date
+        assert (data.events["exit_ts"] - data.events["ts"] == pd.Timedelta(hours=72)).all()
+        assert set(data.events["barrier"]) == {"rank"}
+        # the horizon is closed: no event ends after the last stored bar
+        assert data.events["exit_ts"].max() <= candles["ts"].max()
+
+    def test_unknown_label_is_refused(self, data):
+        candles, funding, symbols_at = data
+        with pytest.raises(ValueError):
+            train_xs.build_dataset(candles, funding, symbols_at, label="mean")
