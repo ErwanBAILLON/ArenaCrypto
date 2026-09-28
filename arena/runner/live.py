@@ -55,6 +55,7 @@ from arena.store.state import load_state, save_state
 log = logging.getLogger(__name__)
 
 FUTURES_PRICES = "https://fapi.binance.com/fapi/v1/ticker/price"
+BOOK_TICKER = "https://fapi.binance.com/fapi/v1/ticker/bookTicker"
 ACTIVE = ("champion", "challenger")
 QUIET_BEFORE = timedelta(minutes=1)
 QUIET_AFTER = timedelta(minutes=5)
@@ -222,6 +223,19 @@ def verdict(w: Watch, prices: dict[str, float], now: datetime, last_bar: datetim
     return None
 
 
+def quoted_book(client: httpx.Client | None, pair: str) -> tuple[float | None, float | None]:
+    """Best bid and ask right now, or (None, None): a missing quote must never block a stop."""
+    if client is None:
+        return None, None
+    try:
+        r = client.get(BOOK_TICKER, params={"symbol": pair}, timeout=3.0)
+        r.raise_for_status()
+        d = r.json()
+        return float(d["bidPrice"]), float(d["askPrice"])
+    except Exception:  # the fill matters more than the measurement
+        return None, None
+
+
 def execute(
     conn: psycopg.Connection,
     settings: Settings,
@@ -232,14 +246,20 @@ def execute(
     x: float,
     now: datetime,
     bar_hours: int = 1,
+    client: httpx.Client | None = None,
 ) -> int:
-    """Close the leg now: fill, re-stated book, competitor told, alert queued. Returns the fill id."""
+    """Close the leg now: fill, re-stated book, competitor told, alert queued. Returns the fill id.
+
+    The quoted spread at that instant is stored with the fill: the arena's cost
+    model is a hypothesis, and these are the first measurements to hold it to.
+    """
     comp = build(spec, bar_hours=bar_hours)
     comp.restore_state(load_state(conn, spec.id))
     comp.live_close(w.symbol, reason)
     save_state(conn, spec.id, now, comp.state())
+    bid, ask = quoted_book(client, w.pair)
     fill_id = bstore.write_fill(
-        conn, spec.id, bstore.Fill(now, w.symbol, w.kind, w.weight, 0.0, price, reason, round(x, 6))
+        conn, spec.id, bstore.Fill(now, w.symbol, w.kind, w.weight, 0.0, price, reason, round(x, 6), bid, ask)
     )
     bstore.write_targets_snapshot(
         conn,
@@ -284,6 +304,7 @@ def run_once(
     prices: dict[str, float],
     now: datetime,
     watches: list[Watch] | None = None,
+    client: httpx.Client | None = None,
 ) -> list[int]:
     """Evaluate every watched leg once; returns the ids of the fills written."""
     last_bar = _last_bar(conn)
@@ -300,7 +321,9 @@ def run_once(
             reason, x = v
             try:
                 fills.append(
-                    execute(conn, settings, specs[w.competitor_id], w, prices[w.pair], reason, x, now, w.bar_hours)
+                    execute(
+                        conn, settings, specs[w.competitor_id], w, prices[w.pair], reason, x, now, w.bar_hours, client
+                    )
                 )
                 closed.add(w.competitor_id)
             except Exception:  # isolate competitors, as the tick does
@@ -340,7 +363,7 @@ def run_forever(
             if any(watches.values()):
                 prices = fetch_prices(client)
                 for u in universes:
-                    if run_once(conn, settings, [u], prices, now, watches.get(u.name, [])):
+                    if run_once(conn, settings, [u], prices, now, watches.get(u.name, []), client=client):
                         stamp = (None, 0.0)  # a book changed: re-read before the next pass
         except Exception:
             conn.rollback()

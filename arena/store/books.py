@@ -206,13 +206,23 @@ class Fill:
     price: float
     reason: str
     excess: float | None = None
+    bid: float | None = None  # the book's best bid / ask when the fill was decided: measured cost, not modelled
+    ask: float | None = None
+
+    @property
+    def spread_bps(self) -> float | None:
+        if not self.bid or not self.ask:
+            return None
+        mid = (self.bid + self.ask) / 2.0
+        return (self.ask - self.bid) / mid * 1e4 if mid else None
 
 
 def write_fill(conn: psycopg.Connection, competitor_id: int, fill: Fill) -> int:
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO fills (competitor_id, ts, symbol, kind, weight_before, weight_after, price, reason, excess)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            "INSERT INTO fills (competitor_id, ts, symbol, kind, weight_before, weight_after, price, reason, excess,"
+            " bid, ask, spread_bps)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 competitor_id,
                 fill.ts,
@@ -223,6 +233,9 @@ def write_fill(conn: psycopg.Connection, competitor_id: int, fill: Fill) -> int:
                 fill.price,
                 fill.reason,
                 fill.excess,
+                fill.bid,
+                fill.ask,
+                fill.spread_bps,
             ),
         )
         return int(cur.fetchone()["id"])
