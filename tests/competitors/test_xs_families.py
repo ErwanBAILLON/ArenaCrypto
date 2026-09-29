@@ -407,3 +407,30 @@ class TestTranchesAndRiskParity:
     def test_risk_parity_mode_trades_and_stays_neutral(self, history):
         d = XsSparse({"vol_mode": "riskparity"}).decide(_snap(history))
         assert d and sum(t.weight for t in d.values()) == pytest.approx(0.0, abs=1e-9)
+
+
+class _SigmaStop(_Fixed):
+    """The same long, stopped at 2.5 daily standard deviations instead of a fixed 3 %."""
+
+    family = "_sigma_ladder"
+    default_params: dict = {"stop_sigma": 2.5}
+
+
+class TestSigmaStop:
+    def test_the_stop_scales_with_the_symbol_volatility(self, history):
+        candles, funding = history
+        ts = sorted(candles["ts"].unique())[24 * 150]
+        snap = _snap(history, ts)
+        comp = _SigmaStop()
+        comp.decide(snap)
+        stop = comp.state()["entries"]["BTC"]["stop"]
+        close = snap.candles("BTC")["close"]
+        daily = float(np.log(close.iloc[-24 * 30 :]).diff().dropna().std() * np.sqrt(24))
+        assert abs(stop - 2.5 * daily) < 1e-9 and stop != _Fixed().params.get("stop", _Fixed.stop)
+
+    def test_without_the_parameter_the_fixed_stop_applies(self, history):
+        candles, funding = history
+        snap = _snap(history, sorted(candles["ts"].unique())[24 * 150])
+        comp = _Fixed()
+        comp.decide(snap)
+        assert comp.state()["entries"]["BTC"]["stop"] == 0.03

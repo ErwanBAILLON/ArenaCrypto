@@ -685,6 +685,118 @@ def train_xs_cmd(
 
 
 @app.command()
+def research_store(
+    out: str = typer.Argument(..., help="Where to write the pickle (weekly panel, hourly closes, funding, liquidity)"),
+) -> None:
+    """Build the fast-harness store of this universe: the feature panel at each rebalance date, once.
+
+    Needs a stored membership schedule (`arena universe-build`). Minutes on
+    five years; every `arena research-run` afterwards takes seconds.
+    """
+    from arena.core.membership import Member
+    from arena.research import fast
+    from arena.runner.history import load_history
+    from arena.store import membership as mstore
+
+    _, conn, universe = _ctx()
+    frame = mstore.membership_frame(conn, universe.name)
+    if frame.empty:
+        typer.echo("no stored membership: run `arena universe-build` first")
+        raise typer.Exit(code=1)
+    members = {
+        pd.Timestamp(ts): [Member(r.symbol, int(r.rank), float(r.adv_usd), float(r.daily_vol)) for r in g.itertuples()]
+        for ts, g in frame.groupby("ts")
+    }
+    history = load_history(conn, universe, universe.history_start, _now(), symbols=_symbols_for(conn, universe))
+    store = fast.build_store(history.candles, history.funding, members, log=typer.echo)
+    pd.to_pickle(store, out)
+    typer.echo(f"stored panel {store.panel.shape}, closes {store.closes.shape}, {len(store.dates)} dates -> {out}")
+
+
+@app.command()
+def research_run(
+    store_path: str = typer.Argument(..., help="Pickle written by `arena research-store`"),
+    rules: str = typer.Option("", help="Comma-separated rule names from arena.research.fast.RULES (default: all)"),
+    capacity: float = typer.Option(1_000_000.0, help="Deployment size for impact costs; 0 = flat fees"),
+    every: int = typer.Option(1, help="Rebalance every N rebalance dates (1 = weekly)"),
+    warmup_days: int = typer.Option(100, help="Days after the first rebalance before the first scored quarter"),
+    out: str = typer.Option("", help="Optional JSON of the per-quarter tables"),
+) -> None:
+    """Price weekly weight rules on the store and print one line per rule: Sharpe by quarter, decomposition."""
+    import json as _json
+
+    from arena.research import fast
+
+    store = pd.read_pickle(store_path)  # written by research-store on this machine
+    wanted = [r.strip() for r in rules.split(",") if r.strip()] or list(fast.RULES)
+    unknown = [r for r in wanted if r not in fast.RULES]
+    if unknown:
+        typer.echo(f"unknown rules {unknown}; known: {', '.join(fast.RULES)}")
+        raise typer.Exit(code=2)
+    fees = fast.fee_model(capacity or None)
+    qs = fast.quarters(store, warmup_days=warmup_days)
+    tables = {}
+    for name in wanted:
+        rule, kw = fast.RULES[name]
+        f = fast.summarise(fast.run(store, rule, fees, every=every, **kw), qs)
+        tables[name] = f.to_dict(orient="records")
+        typer.echo(fast.headline(name, f))
+    if out:
+        with open(out, "w") as fh:
+            _json.dump(tables, fh, default=str)
+
+
+@app.command()
+def seed(
+    family: str = typer.Argument(..., help="Registered family"),
+    name: str = typer.Argument(..., help="Competitor name (suffixed with the universe outside crypto)"),
+    params: str = typer.Option("{}", help="JSON of parameter overrides on the family defaults"),
+    rationale: str = typer.Option("seeded by hand", help="Why this challenger exists (shown on its page)"),
+) -> None:
+    """Insert a challenger without the entry gate: judged forward only, promotable once `arena judge` admits it.
+
+    The bootstrap gates founders against five years of history, which on the
+    wide arena is an hour of nulls and an hour per founder at six gigabytes.
+    A variant of a family already in the arena (a stop in sigmas instead of
+    a percentage, a slower cadence) does not need that to start being scored:
+    the forward test is the one that counts, and `arena judge NAME` runs the
+    gate later, on the same machine, when the quota allows.
+    """
+    import json as _json
+
+    _, conn, universe = _ctx()
+    if family not in REGISTRY:
+        typer.echo(f"unknown family {family!r}; known: {', '.join(sorted(REGISTRY))}")
+        raise typer.Exit(code=2)
+    if universe.market not in REGISTRY[family].markets:
+        typer.echo(f"{family} is not built for the {universe.market} market")
+        raise typer.Exit(code=2)
+    full = _uname(universe, name)
+    if registry.get_competitor(conn, full) is not None:
+        typer.echo(f"{full}: already present")
+        raise typer.Exit(code=0)
+    overrides = _json.loads(params)
+    merged = {**REGISTRY[family].default_params, **overrides}
+    merged.pop("model_str", None)
+    cid = registry.insert_competitor(
+        conn,
+        CompetitorSpec(
+            None,
+            full,
+            family,
+            1,
+            merged,
+            status="challenger",
+            universe=universe.name,
+            gate_admitted=False,
+            rationale=f"seeded, not gated: {rationale}; overrides {overrides}",
+        ),
+    )
+    conn.commit()
+    typer.echo(f"{full}: challenger (id {cid}), overrides {overrides}; run `arena judge {full}` to gate it")
+
+
+@app.command()
 def nulls() -> None:
     """Register any missing null models and benchmarks for this universe (idempotent, cheap).
 

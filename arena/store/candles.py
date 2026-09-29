@@ -215,3 +215,35 @@ def upsert_positioning(conn, exchange: str, frame) -> int:
             rows,
         )
         return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+def upsert_liquidations(conn, exchange: str, frame) -> int:
+    """Insert liquidation rows, ignoring those already stored; returns rows written."""
+    if frame is None or frame.empty:
+        return 0
+    rows = [
+        (
+            exchange,
+            str(r["symbol"]),
+            r["ts"].to_pydatetime() if hasattr(r["ts"], "to_pydatetime") else r["ts"],
+            str(r["side"]),
+            float(r["price"]),
+            float(r["qty"]),
+            float(r["notional"]),
+        )
+        for r in frame.to_dict(orient="records")
+    ]
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO liquidations (exchange, symbol, ts, side, price, qty, notional)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            rows,
+        )
+        return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+def last_liquidation_ts(conn, exchange: str, symbol: str):
+    with conn.cursor() as cur:
+        cur.execute("SELECT max(ts) AS ts FROM liquidations WHERE exchange = %s AND symbol = %s", (exchange, symbol))
+        row = cur.fetchone()
+    return row["ts"] if row and row["ts"] is not None else None

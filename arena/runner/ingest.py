@@ -10,7 +10,7 @@ import pandas as pd
 import psycopg
 
 from arena.core.universe import Universe
-from arena.data import binance, hyperliquid, macro, rss, yahoo
+from arena.data import binance, hyperliquid, macro, okx, rss, yahoo
 from arena.nlp.scorer import VaderScorer
 from arena.store import candles as cstore
 from arena.store import health as hstore
@@ -18,6 +18,7 @@ from arena.store import news as nstore
 
 log = logging.getLogger(__name__)
 EXCHANGE = "binance"
+LIQ_EXCHANGE = "okx"
 FUNDING_LOOKBACK = timedelta(days=3)  # re-fetch window for idempotent funding refresh
 
 
@@ -76,6 +77,20 @@ def ingest_market(
                 pos["symbol"] = sym
                 counts["positioning"] = counts.get("positioning", 0) + cstore.upsert_positioning(conn, EXCHANGE, pos)
             conn.commit()
+            # liquidations come from OKX (Binance's futures stream is mute from here); a failure here
+            # is that venue's, not Binance's, and must not roll back the rows above
+            try:
+                liq_since = cstore.last_liquidation_ts(conn, LIQ_EXCHANGE, sym)
+                liq = okx.liquidations(client, bsym, since=pd.Timestamp(liq_since) if liq_since else None)
+                if not liq.empty:
+                    liq["symbol"] = sym
+                    counts["liquidations"] = counts.get("liquidations", 0) + cstore.upsert_liquidations(
+                        conn, LIQ_EXCHANGE, liq
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                log.warning("liquidations failed for %s", sym, exc_info=True)
         except Exception:  # one symbol must not stop the others
             conn.rollback()
             for key in failures:

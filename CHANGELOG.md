@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Liquidations, stored: every hourly ingest pulls the recent filled liquidations of each member's USDT perpetual from OKX (`arena/data/okx.py`, table `liquidations`, migration 0011). Binance only publishes them on its futures WebSocket, which is mute from the cluster (handshake accepted, nothing ever arrives; verified 2026-09-29 on `!forceOrder@arr` and `btcusdt@aggTrade`). Same cascades, same coins, a venue that answers.
+- `stop_sigma`: ladder families can stop a leg at N daily standard deviations of the symbol at entry instead of a fixed percentage (`stop_vol_days`, default 30). The exit study of 2026-09-28 found the fixed 8 % the most expensive exit on the trend follower; this asks the same question of every name.
+- `arena seed FAMILY NAME --params JSON`: a challenger without the entry gate, judged forward only; `arena judge NAME` gates it later. For variants of a family already in the arena, where an hour of nulls at six gigabytes buys nothing the forward test will not say.
+- `arena.research.fast`: the fast harness in the package. `arena research-store OUT` computes the feature panel at each rebalance date once (minutes on five years), `arena research-run STORE --rules a,b` prices weekly weight rules on it in seconds with the arena's impact costs and prints per rule the quarterly Sharpe, the drawdown and the gross / funding / fees decomposition. Twelve rules in the library, from the always-long null to the low-volatility hedges. Validated against the slow engine before use.
+- `majors_tsmom`: the one weekly rule the harness left standing -- long BTC and ETH when their 30-day return is positive, flat otherwise, 20 % vol target. Founder; refused at the gate (0.84 against a null threshold of 0.88), runs as a challenger.
+
+### Fixed
+- The bootstrap re-seeded founders the arena had retired and aborted on the unique-name constraint before reaching a new one.
 - Retirement: `promotion.should_retire` asks the question symmetric to promotion of every mature competitor, challenger or champion -- P(true Sharpe > 0) < 10 % or a 25 % drawdown from a peak, and it leaves (books kept, Telegram `retired`). A family with no champion is an honest state.
 - Redundancy: two live models whose daily returns correlate above 0.95 over three weeks are one idea with two names; the younger (on equal age, the weaker) is retired.
 - Markets: `Competitor.markets` declares what a family is built for, `Universe.market` what a universe trades; founders are filtered on the fit and `arena prune` retires misfits. Funding families and the news lexicon are crypto-only.

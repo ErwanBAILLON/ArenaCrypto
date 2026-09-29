@@ -62,6 +62,30 @@ class LadderHoldingCompetitor(HoldingCompetitor):
     def _stop(self) -> float:
         return abs(float(self.params.get("stop", self.stop)))
 
+    def _stop_for(self, snap: Snapshot, symbol: str) -> float:
+        """The stop of one leg: fixed, or ``stop_sigma`` daily standard deviations of the symbol at entry.
+
+        A fixed 8 % is one hour of noise on a small perp and a month on BTC; the
+        exit study of 2026-09-28 found the fixed stop the most expensive exit on
+        the trend follower (90 triggers a quarter). Scaling it to the leg's own
+        volatility asks the same question of every name: has this moved further
+        against us than its usual day, 2.5 times over.
+        """
+        sigma_mult = self.params.get("stop_sigma")
+        if not sigma_mult:
+            return self._stop()
+        try:
+            close = snap.candles(symbol)["close"].dropna()
+        except Exception:  # no candles for this name: fall back to the fixed stop
+            return self._stop()
+        window = self.days(int(self.params.get("stop_vol_days", 30)))
+        if len(close) < window // 2 + 2:
+            return self._stop()
+        daily = float(np.log(close.iloc[-window:]).diff().dropna().std() * np.sqrt(self.bars_per_day))
+        if not np.isfinite(daily) or daily <= 0:
+            return self._stop()
+        return max(0.01, float(sigma_mult) * daily)
+
     # ------------------------------------------------------------------ cadence
 
     def rebalance_due(self, snap: Snapshot) -> bool:
@@ -256,7 +280,13 @@ class LadderHoldingCompetitor(HoldingCompetitor):
                 basis_key = snap.ts.isoformat()
                 if basis_key not in self._basis:
                     self._basis[basis_key] = {s: c for s in snap.symbols if (c := snap.last_close(s)) == c and c}
-                self._entries[sym] = {"price": float(price), "bars": 0.0, "side": side, "basis": basis_key}
+                self._entries[sym] = {
+                    "price": float(price),
+                    "bars": 0.0,
+                    "side": side,
+                    "basis": basis_key,
+                    "stop": self._stop_for(snap, sym),
+                }
                 out[sym] = target
                 continue
 
@@ -266,8 +296,9 @@ class LadderHoldingCompetitor(HoldingCompetitor):
             if excess is None:
                 out[sym] = target
                 continue
-            if held >= ladder.horizon or excess >= ladder.target_at(held) > 0.0 or excess <= -stop:
-                reason = "roi" if excess > 0 else ("stop" if excess <= -stop else "deadline")
+            leg_stop = float(entry.get("stop") or stop)
+            if held >= ladder.horizon or excess >= ladder.target_at(held) > 0.0 or excess <= -leg_stop:
+                reason = "roi" if excess > 0 else ("stop" if excess <= -leg_stop else "deadline")
                 self._close(sym, reason)
                 continue
             out[sym] = replace(target, reason={**target.reason, "held_bars": held, "excess": round(excess, 5)})
