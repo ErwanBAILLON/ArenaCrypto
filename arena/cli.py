@@ -677,7 +677,12 @@ def train_xs_cmd(
             status="challenger",
             universe=universe.name,
             gate_admitted=False,
-            rationale=f"trained: P={n_features} lambda={selection.lam} cv={selection.score:+.5f}",
+            rationale=(
+                f"trained: label={label}"
+                f"{f' horizon={horizon}h' if label == 'rank' else ''}"
+                f" P={n_features} lambda={selection.lam} cv={selection.score:+.5f}"
+                f" pbo={selection.pbo.get('pbo', 1):.2f}"
+            ),
         ),
     )
     registry.save_model(conn, cid, model.to_json().encode(), model.metrics)
