@@ -639,7 +639,9 @@ def train_xs_cmd(
 
     _, conn, universe = _ctx()
     end = _now()
-    history = load_history(conn, universe, universe.history_start, end)
+    # every symbol that was ever a member: a point-in-time universe has no static list, and the
+    # default (universe.symbols) is empty there -- the dataset came out with zero rows
+    history = load_history(conn, universe, universe.history_start, end, symbols=_symbols_for(conn, universe))
     frame = mstore.membership_frame(conn, universe.name)
     if frame.empty:
         typer.echo("no stored membership: run `arena universe-build` first")
